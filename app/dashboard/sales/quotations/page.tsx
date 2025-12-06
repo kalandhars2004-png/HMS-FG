@@ -19,9 +19,9 @@ export default function QuotationsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-[1600px] mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Quotation</h1>
-          <p className="text-sm text-gray-600 mt-1">Manage your quotations</p>
+        <div className="mb-6 bg-green-500 p-6 rounded-lg">
+          <h1 className="text-2xl font-bold text-white">Quotation</h1>
+          <p className="text-sm text-white mt-1">Manage your quotations</p>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
@@ -34,8 +34,8 @@ export default function QuotationsPage() {
               <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200"><FileText className="w-5 h-5 text-red-500" /></button>
               <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200"><Sheet className="w-5 h-5 text-green-600" /></button>
               <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200"><RotateCw className="w-5 h-5 text-gray-600" /></button>
-              <select className="px-3 py-2 border border-gray-200 rounded-lg"><option>Customer</option></select>
-              <select className="px-3 py-2 border border-gray-200 rounded-lg"><option>Status</option></select>
+              <select className="px-3 py-2 border border-gray-200 rounded-lg w-40"><option>Customer</option></select>
+              <select className="px-3 py-2 border border-gray-200 rounded-lg w-40"><option>Status</option></select>
               <select className="px-3 py-2 border border-gray-200 rounded-lg"><option>Sort By : Last 7 Days</option></select>
               <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">+ Add Quotation</button>
             </div>
@@ -44,15 +44,15 @@ export default function QuotationsPage() {
 
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="min-w-full">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-blue-400 border-b">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Quotation No</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Customer</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Date</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Reference</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Grand Total</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase">Actions</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Quotation No</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Customer</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Date</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Reference</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Grand Total</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Status</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-white uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -86,8 +86,8 @@ export default function QuotationsPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-semibold">Add Quotation</h2>
+            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
+              <h2 className="text-xl font-semibold text-white">Add Quotation</h2>
               <button onClick={() => setShowModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-4">
