@@ -49,7 +49,7 @@ const menuItems: MenuItem[] = [
       { name: 'Quotation', href: '/dashboard/sales/quotations', icon: FileCheck },
     ],
   },
-  { name: 'POS', href: '/dashboard/sales/pos', icon: CreditCard },
+  { name: 'POS', href: '/pos', icon: CreditCard },
   {
     name: 'Peoples',
     icon: Users,

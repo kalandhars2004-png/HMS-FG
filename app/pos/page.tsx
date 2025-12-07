@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Minus, Trash2, User, Menu, Printer, DollarSign, X, Edit } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Plus, Minus, Trash2, User, Menu, Printer, DollarSign, X, Edit, ArrowLeft } from 'lucide-react';
 
 interface BillingItem {
   id: string;
@@ -33,7 +34,6 @@ export default function POSPage() {
   const [customerName, setCustomerName] = useState('');
   const [showCustomerAutocomplete, setShowCustomerAutocomplete] = useState(false);
   const [selectedCustomerIndex, setSelectedCustomerIndex] = useState(0);
-  const [showProductImages, setShowProductImages] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMultiplePayModal, setShowMultiplePayModal] = useState(false);
@@ -44,6 +44,7 @@ export default function POSPage() {
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [showPaymentCompletedModal, setShowPaymentCompletedModal] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showProductImages, setShowProductImages] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<{
     items: BillingItem[];
     totals: any;
@@ -70,7 +71,7 @@ export default function POSPage() {
   const products = [
     { id: '1', code: '8906069402668', name: 'Pasta and Pizza Sauce', mrp: 89.00, stock: 150, image: '🍝' },
     { id: '2', code: 'OP000503074', name: 'TRUFFLE PASTRY', mrp: 120.00, stock: 50, image: '🧁' },
-    { id: '3', code: '8901058842906', name: 'MaggilimiSauce22', mrp: 75.00, stock: 200, image: '🍅' },
+    { id: '3', code: '8901058842906', name: 'MaggilimiSauce22', mrp: 75.00, stock: 200, image: '🥫' },
     { id: '4', code: 'ADK000001237', name: 'Cakes', mrp: 1000.00, stock: 25, image: '🎂' },
     { id: '5', code: 'PRD000001', name: 'iPhone 14 Pro', mrp: 89000.00, stock: 10, image: '📱' },
     { id: '6', code: 'PRD000002', name: 'MacBook Pro', mrp: 125000.00, stock: 8, image: '💻' },
@@ -85,7 +86,7 @@ export default function POSPage() {
     { id: '15', code: 'BK000001', name: 'Harry Potter Complete Set', mrp: 3500.00, stock: 20, image: '📚' },
     { id: '16', code: 'GR000001', name: 'Organic Tomatoes (1kg)', mrp: 60.00, stock: 200, image: '🍅' },
     { id: '17', code: 'GR000002', name: 'Fresh Milk (1L)', mrp: 70.00, stock: 150, image: '🥛' },
-    { id: '18', code: 'SN000001', name: 'Lays Potato Chips', mrp: 20.00, stock: 300, image: '🍟' },
+    { id: '18', code: 'SN000001', name: 'Lays Potato Chips', mrp: 20.00, stock: 300, image: '🥔' },
     { id: '19', code: 'SN000002', name: 'Coca Cola (500ml)', mrp: 40.00, stock: 250, image: '🥤' },
     { id: '20', code: 'AC000001', name: 'Leather Wallet', mrp: 1500.00, stock: 45, image: '👛' },
   ];
@@ -251,7 +252,9 @@ export default function POSPage() {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedCustomerIndex(prev => prev < filteredCustomers.length - 1 ? prev + 1 : prev);
+      setSelectedCustomerIndex(prev =>
+        prev < filteredCustomers.length - 1 ? prev + 1 : prev
+      );
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedCustomerIndex(prev => prev > 0 ? prev - 1 : prev);
@@ -293,7 +296,13 @@ export default function POSPage() {
       {/* Top Header */}
       <div className="bg-gradient-to-r from-teal-500 to-cyan-600 px-4 py-3 flex items-center justify-between text-white">
         <div className="flex items-center gap-4">
-          <Menu className="w-6 h-6" />
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="font-medium">Back to Dashboard</span>
+          </Link>
           <div className="flex items-center gap-2">
             <div className="bg-blue-600 p-2 rounded">
               <span className="font-bold text-lg">SSS</span>
@@ -334,72 +343,74 @@ export default function POSPage() {
       <div className="h-[calc(100vh-60px)] flex">
         {/* Billing Panel */}
         <div className={`bg-white p-4 overflow-auto h-full transition-all ${showProductImages ? 'w-[70%]' : 'w-full'}`}>
-          {/* Search Bar with Images Toggle */}
-          <div className="mb-4 flex gap-2 items-center">
+          {/* Search Bar with Image Toggle */}
+          <div className="mb-4 flex gap-2">
             <div className="flex-1 relative">
-            <input
-              type="text"
-              placeholder="Scan Barcode/Enter Product Name"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowAutocomplete(e.target.value.length > 0);
-                setSelectedProductIndex(0);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSearchProduct();
-                } else if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  setSelectedProductIndex((prev) =>
-                    prev < filteredProducts.length - 1 ? prev + 1 : prev
-                  );
-                } else if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  setSelectedProductIndex((prev) => prev > 0 ? prev - 1 : 0);
-                }
-              }}
-              onFocus={() => setShowAutocomplete(searchQuery.length > 0)}
-              onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
-              className="w-full px-4 py-3 border-2 border-teal-500 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
+              <input
+                type="text"
+                placeholder="Scan Barcode/Enter Product Name"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowAutocomplete(e.target.value.length > 0);
+                  setSelectedProductIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearchProduct();
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSelectedProductIndex((prev) =>
+                      prev < filteredProducts.length - 1 ? prev + 1 : prev
+                    );
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSelectedProductIndex((prev) => prev > 0 ? prev - 1 : 0);
+                  }
+                }}
+                onFocus={() => setShowAutocomplete(searchQuery.length > 0)}
+                onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
+                className="w-full px-4 py-3 border-2 border-teal-500 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
 
-            {/* Autocomplete Dropdown */}
-            {showAutocomplete && filteredProducts.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border-2 border-teal-500 rounded shadow-lg max-h-60 overflow-y-auto">
-                {filteredProducts.map((product, index) => (
-                  <div
-                    key={product.id}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      handleSelectProduct(product);
-                    }}
-                    onMouseEnter={() => setSelectedProductIndex(index)}
-                    className={`px-4 py-3 cursor-pointer border-b border-gray-200 last:border-b-0 ${
-                      index === selectedProductIndex ? 'bg-teal-100' : 'hover:bg-teal-50'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center gap-3">
-                      {showProductImages && (
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center flex-shrink-0">
-                          <span className="text-2xl">{product.image}</span>
+              {/* Autocomplete Dropdown */}
+              {showAutocomplete && filteredProducts.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-white border-2 border-teal-500 rounded shadow-lg max-h-60 overflow-y-auto">
+                  {filteredProducts.map((product, index) => (
+                    <div
+                      key={product.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectProduct(product);
+                      }}
+                      onMouseEnter={() => setSelectedProductIndex(index)}
+                      className={`px-4 py-3 cursor-pointer border-b border-gray-200 last:border-b-0 ${
+                        index === selectedProductIndex ? 'bg-teal-100' : 'hover:bg-teal-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center gap-3">
+                        {showProductImages && (
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center text-2xl flex-shrink-0">
+                            {product.image}
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900">{product.name}</div>
+                          <div className="text-xs text-gray-600 font-mono">{product.code}</div>
                         </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{product.name}</div>
-                        <div className="text-xs text-gray-600 font-mono">{product.code}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-teal-600">₹{product.mrp.toFixed(2)}</div>
-                        <div className="text-xs text-gray-500">Stock: {product.stock}</div>
+                        <div className="text-right">
+                          <div className="font-bold text-teal-600">₹{product.mrp.toFixed(2)}</div>
+                          <div className="text-xs text-gray-500">Stock: {product.stock}</div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Image Toggle Button */}
             <button
               onClick={() => setShowProductImages(!showProductImages)}
               className="flex items-center gap-3 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -536,8 +547,8 @@ export default function POSPage() {
                       </td>
                       {showProductImages && (
                         <td className="px-3 py-2">
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center">
-                            <span className="text-xl">{item.productImage}</span>
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center text-xl">
+                            {item.productImage}
                           </div>
                         </td>
                       )}
@@ -690,7 +701,7 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Right Navigation Panel - Product Images */}
+        {/* Right Product Navigation Panel */}
         {showProductImages && (
           <div className="w-[30%] bg-white border-l border-gray-300 overflow-y-auto h-full">
             <div className="p-4">
