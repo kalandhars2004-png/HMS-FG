@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useState } from 'react';
-import { ChevronRight, Package, Layers, FolderTree, Tag, Ruler, Palette, Warehouse, RefreshCw, ArrowLeftRight, ShoppingCart, FileText, RotateCcw, FileCheck, CreditCard } from 'lucide-react';
+import { ChevronRight, Package, Layers, FolderTree, Tag, Ruler, Palette, Warehouse, RefreshCw, ArrowLeftRight, ShoppingCart, FileText, RotateCcw, FileCheck, CreditCard, ShoppingBag, FileInput, Undo, Users, Building, Store } from 'lucide-react';
 
 interface MenuItem {
   name: string;
@@ -31,6 +31,15 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
+    name: 'Purchases',
+    icon: ShoppingBag,
+    children: [
+      { name: 'Purchases', href: '/dashboard/purchases', icon: ShoppingBag },
+      { name: 'Purchase Order', href: '/dashboard/purchases/orders', icon: FileInput },
+      { name: 'Purchase Return', href: '/dashboard/purchases/returns', icon: Undo },
+    ],
+  },
+  {
     name: 'Sales',
     icon: ShoppingCart,
     children: [
@@ -38,7 +47,16 @@ const menuItems: MenuItem[] = [
       { name: 'Invoices', href: '/dashboard/sales/invoices', icon: FileText },
       { name: 'Sales Return', href: '/dashboard/sales/returns', icon: RotateCcw },
       { name: 'Quotation', href: '/dashboard/sales/quotations', icon: FileCheck },
-      { name: 'POS', href: '/dashboard/sales/pos', icon: CreditCard },
+    ],
+  },
+  { name: 'POS', href: '/dashboard/sales/pos', icon: CreditCard },
+  {
+    name: 'Peoples',
+    icon: Users,
+    children: [
+      { name: 'Customers', href: '/dashboard/peoples/customers', icon: Users },
+      { name: 'Suppliers', href: '/dashboard/peoples/suppliers', icon: Building },
+      { name: 'Stores', href: '/dashboard/peoples/stores', icon: Store },
     ],
   },
 ];
@@ -46,7 +64,7 @@ const menuItems: MenuItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Stock', 'Sales']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Stock', 'Purchases', 'Sales', 'Peoples']);
 
   const toggleMenu = (menuName: string) => {
     setExpandedMenus((prev) =>
