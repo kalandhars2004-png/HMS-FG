@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useState } from 'react';
-import { ChevronRight, Package, Layers, FolderTree, Tag, Ruler, Palette, Warehouse, RefreshCw, ArrowLeftRight, ShoppingCart, FileText, RotateCcw, FileCheck, CreditCard, ShoppingBag, FileInput, Undo, Users, Building, Store } from 'lucide-react';
+import { ChevronRight, Package, Layers, FolderTree, Tag, Ruler, Palette, Warehouse, RefreshCw, ArrowLeftRight, ShoppingCart, FileText, RotateCcw, FileCheck, CreditCard, ShoppingBag, FileInput, Undo, Users, Building, Store, Briefcase } from 'lucide-react';
 
 interface MenuItem {
   name: string;
@@ -50,13 +50,15 @@ const menuItems: MenuItem[] = [
     ],
   },
   { name: 'POS', href: '/pos', icon: CreditCard },
+  { name: 'Warehouses', href: '/dashboard/warehouses', icon: Warehouse },
+  { name: 'Stores', href: '/dashboard/peoples/stores', icon: Store },
   {
     name: 'Peoples',
     icon: Users,
     children: [
       { name: 'Customers', href: '/dashboard/peoples/customers', icon: Users },
+      { name: 'Billers', href: '/dashboard/peoples/billers', icon: Briefcase },
       { name: 'Suppliers', href: '/dashboard/peoples/suppliers', icon: Building },
-      { name: 'Stores', href: '/dashboard/peoples/stores', icon: Store },
     ],
   },
 ];

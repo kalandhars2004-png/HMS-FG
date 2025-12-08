@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Search, Plus, Minus, Trash2, User, Menu, Printer, DollarSign, X, Edit, ArrowLeft } from 'lucide-react';
 
@@ -40,6 +40,17 @@ export default function POSPage() {
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerFirstName, setNewCustomerFirstName] = useState('');
+  const [newCustomerLastName, setNewCustomerLastName] = useState('');
+  const [newCustomerEmail, setNewCustomerEmail] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [newCustomerCity, setNewCustomerCity] = useState('');
+  const [newCustomerState, setNewCustomerState] = useState('');
+  const [newCustomerCountry, setNewCustomerCountry] = useState('');
+  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState('');
+  const [newCustomerStatus, setNewCustomerStatus] = useState(true);
+  const [newCustomerImage, setNewCustomerImage] = useState<string | null>(null);
   const [showCashPaymentModal, setShowCashPaymentModal] = useState(false);
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [showPaymentCompletedModal, setShowPaymentCompletedModal] = useState(false);
@@ -54,6 +65,30 @@ export default function POSPage() {
     date: string;
     invoiceNo: string;
   } | null>(null);
+
+  // Auto-populate customer form when modal opens
+  useEffect(() => {
+    if (showAddCustomerModal && customerName.trim()) {
+      const nameParts = customerName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      setNewCustomerFirstName(firstName);
+      setNewCustomerLastName(lastName);
+    } else if (!showAddCustomerModal) {
+      // Reset form fields when modal closes
+      setNewCustomerFirstName('');
+      setNewCustomerLastName('');
+      setNewCustomerEmail('');
+      setNewCustomerPhone('');
+      setNewCustomerAddress('');
+      setNewCustomerCity('');
+      setNewCustomerState('');
+      setNewCustomerCountry('');
+      setNewCustomerPostalCode('');
+      setNewCustomerStatus(true);
+      setNewCustomerImage(null);
+    }
+  }, [showAddCustomerModal, customerName]);
 
   const customers = [
     { id: '1', name: 'Walk in Customer', phone: '', address: '' },
@@ -477,7 +512,6 @@ export default function POSPage() {
                       <div
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setNewCustomerName(customerName);
                           setShowAddCustomerModal(true);
                           setShowCustomerAutocomplete(false);
                         }}
@@ -496,7 +530,12 @@ export default function POSPage() {
                 )}
               </div>
               <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded">▼</button>
-              <button className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">+</button>
+              <button
+                onClick={() => setShowAddCustomerModal(true)}
+                className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+              >
+                +
+              </button>
               <input
                 type="text"
                 placeholder="Scan Sales Invoice"
@@ -1318,193 +1357,198 @@ export default function POSPage() {
       {/* Add Customer Modal */}
       {showAddCustomerModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-3xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">New Customer</h2>
+          <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b bg-orange-500">
+              <h2 className="text-lg font-semibold text-white">Add Customer</h2>
               <button
                 onClick={() => setShowAddCustomerModal(false)}
-                className="text-white hover:bg-blue-700 rounded-full p-1"
+                className="text-white hover:bg-orange-600 rounded-full p-1"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-6">
-              <div className="grid grid-cols-2 gap-6">
-                {/* Name */}
+              {/* Upload Image */}
+              <div className="mb-6 flex justify-center">
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-full bg-gray-200 border-2 border-gray-300 flex items-center justify-center overflow-hidden">
+                    {newCustomerImage ? (
+                      <img src={newCustomerImage} alt="Customer" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-12 h-12 text-gray-400" />
+                    )}
+                  </div>
+                  <label className="absolute bottom-0 right-0 bg-orange-500 text-white rounded-full p-1.5 cursor-pointer hover:bg-orange-600">
+                    <Edit className="w-4 h-4" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setNewCustomerImage(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* First Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Name <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter customer name"
+                    value={newCustomerFirstName}
+                    onChange={(e) => setNewCustomerFirstName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter first name"
                   />
                 </div>
 
-                {/* Mobile No */}
+                {/* Last Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Mobile No <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <select className="px-3 py-2 border border-gray-300 rounded-lg w-24">
-                      <option>+91</option>
-                      <option>+1</option>
-                      <option>+44</option>
-                    </select>
-                    <input
-                      type="tel"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter mobile number"
-                    />
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-                      Verify
-                    </button>
-                  </div>
-                </div>
-
-                {/* WhatsApp No */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    WhatsApp No
-                  </label>
-                  <div className="flex gap-2">
-                    <select className="px-3 py-2 border border-gray-300 rounded-lg w-24">
-                      <option>+91</option>
-                      <option>+1</option>
-                      <option>+44</option>
-                    </select>
-                    <input
-                      type="tel"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter WhatsApp number"
-                    />
-                  </div>
-                </div>
-
-                {/* Date of Birth */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of Birth
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Anniversary Date */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Anniversary Date
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    type="text"
+                    value={newCustomerLastName}
+                    onChange={(e) => setNewCustomerLastName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter last name"
                   />
                 </div>
 
                 {/* Email */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="email"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={newCustomerEmail}
+                    onChange={(e) => setNewCustomerEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                     placeholder="Enter email address"
                   />
                 </div>
 
-                {/* Address Line 1 */}
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter phone number"
+                  />
+                </div>
+
+                {/* Address */}
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Address Line 1
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Address <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={newCustomerAddress}
+                    onChange={(e) => setNewCustomerAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                     placeholder="Enter address"
+                  />
+                </div>
+
+                {/* City */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    City <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustomerCity}
+                    onChange={(e) => setNewCustomerCity(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter city"
+                  />
+                </div>
+
+                {/* State */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    State <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustomerState}
+                    onChange={(e) => setNewCustomerState(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter state"
                   />
                 </div>
 
                 {/* Country */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Country <span className="text-red-500">*</span>
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select Country</option>
-                    <option value="India">India</option>
-                    <option value="USA">USA</option>
-                    <option value="UK">UK</option>
-                  </select>
-                </div>
-
-                {/* State */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    State <span className="text-red-500">*</span>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select State</option>
-                    <option value="Gujarat">Gujarat</option>
-                    <option value="Maharashtra">Maharashtra</option>
-                    <option value="Karnataka">Karnataka</option>
-                  </select>
-                </div>
-
-                {/* City */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    City <span className="text-red-500">*</span>
-                  </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Search or enter city"
+                    value={newCustomerCountry}
+                    onChange={(e) => setNewCustomerCountry(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter country"
                   />
                 </div>
 
-                {/* Pin Code */}
+                {/* Postal Code */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pin Code
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Postal Code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter pin code"
+                    value={newCustomerPostalCode}
+                    onChange={(e) => setNewCustomerPostalCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter postal code"
                   />
                 </div>
 
-                {/* GST Type */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    GST Type
+                {/* Status */}
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Status
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select GST Type</option>
-                    <option value="Registered">Registered</option>
-                    <option value="Unregistered">Unregistered</option>
-                    <option value="Composition">Composition</option>
-                  </select>
-                </div>
-
-                {/* GSTIN */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    GSTIN
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter GST number"
-                  />
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setNewCustomerStatus(!newCustomerStatus)}
+                      className="flex items-center gap-3 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <span className="text-sm font-medium text-gray-700">
+                        {newCustomerStatus ? 'Active' : 'Inactive'}
+                      </span>
+                      <div className={`relative w-10 h-5 rounded-full transition-colors ${
+                        newCustomerStatus ? 'bg-green-600' : 'bg-gray-300'
+                      }`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                          newCustomerStatus ? 'translate-x-5' : 'translate-x-0'
+                        }`}></div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1512,18 +1556,23 @@ export default function POSPage() {
               <div className="flex justify-end gap-3 mt-6">
                 <button
                   onClick={() => setShowAddCustomerModal(false)}
-                  className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => {
+                    if (!newCustomerFirstName || !newCustomerLastName || !newCustomerEmail || !newCustomerPhone) {
+                      alert('Please fill in all required fields!');
+                      return;
+                    }
                     // Here you would normally save the customer data
-                    alert(`Customer "${newCustomerName}" added successfully!`);
-                    setCustomerName(newCustomerName);
+                    const fullName = `${newCustomerFirstName} ${newCustomerLastName}`;
+                    alert(`Customer "${fullName}" added successfully!`);
+                    setCustomerName(fullName);
                     setShowAddCustomerModal(false);
                   }}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
                 >
                   Save
                 </button>
