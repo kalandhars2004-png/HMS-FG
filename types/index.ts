@@ -46,8 +46,13 @@ export interface Category {
   id: string;
   name: string;
   slug: string;
+  code?: string;
   description?: string;
   status: boolean;
+  icon?: string;
+  color?: string;
+  displayOrder?: number;
+  parentId?: string;
   createdAt?: string;
 }
 

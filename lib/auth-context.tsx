@@ -3,10 +3,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/types';
+import { AuthAPI } from './api';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -19,36 +20,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in on mount
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('authToken');
-
     if (storedUser && token) {
       setUser(JSON.parse(storedUser));
     }
     setIsLoading(false);
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      // In a real app, this would call the Java REST API
-      // For now, we'll simulate a successful login
-
-      // Simulated API call
-      const mockUser: User = {
-        id: '1',
-        username,
-        email: `${username}@example.com`,
-        role: 'admin',
+      const res = await AuthAPI.login(email, password);
+      const backendUser: User = {
+        id: String(res.user?.id || '1'),
+        username: res.user?.name || email,
+        email: email,
+        role: res.role?.toLowerCase() || 'admin',
       };
-
-      const mockToken = 'mock-jwt-token-' + Date.now();
-
-      // Store user and token
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      localStorage.setItem('authToken', mockToken);
-
-      setUser(mockUser);
+      localStorage.setItem('user', JSON.stringify(backendUser));
+      localStorage.setItem('authToken', res.token || '');
+      setUser(backendUser);
       router.push('/dashboard');
     } catch (error) {
       console.error('Login failed:', error);
