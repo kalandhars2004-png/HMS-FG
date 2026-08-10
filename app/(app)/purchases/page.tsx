@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Download, Eye, Edit, Trash2, FileText, FileSpreadsheet, RefreshCw, ChevronUp, X, Calendar } from '@/components/ui/LucideIcon';
+import { Search, Plus, Download, Eye, Edit, Trash2, FileText, FileSpreadsheet, RefreshCw, ChevronUp, Calendar } from '@/components/ui/LucideIcon';
+import { formatCurrency } from '@/lib/currency';
 import { TransactionsAPI, ProductsAPI, SuppliersAPI } from '@/lib/api';
+import GlobalModal from '@/components/ui/GlobalModal';
 
 interface Purchase {
   id: string;
@@ -343,9 +345,9 @@ export default function PurchasesPage() {
                       {purchase.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-700">₹{purchase.total}</td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-700">₹{purchase.paid}</td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-700">₹{purchase.due.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm text-right text-gray-700">{formatCurrency(purchase.total)}</td>
+                  <td className="px-6 py-4 text-sm text-right text-gray-700">{formatCurrency(purchase.paid)}</td>
+                  <td className="px-6 py-4 text-sm text-right text-gray-700">{formatCurrency(purchase.due)}</td>
                   <td className="px-6 py-4">
                     <span className={`flex items-center gap-1 text-xs font-medium ${getPaymentStatusColor(purchase.paymentStatus)}`}>
                       <span className="w-2 h-2 rounded-full bg-current"></span>
@@ -374,39 +376,33 @@ export default function PurchasesPage() {
 
       {/* Add Purchase Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-6xl shadow-xl max-h-[95vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-10">
-              <h2 className="text-2xl font-bold text-gray-900">Add Purchase</h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-full"
-              >
-                <X className="w-6 h-6 text-gray-600" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {/* Top Form Fields */}
+        <GlobalModal
+          onClose={() => setShowAddModal(false)}
+          title="Add Purchase"
+          icon={<Plus className="w-5 h-5" />}
+          size="xl"
+          submitLabel="Submit"
+        >
+          <div>
+            {/* Top Form Fields */}
               <div className="grid grid-cols-3 gap-4 mb-6">
                 {/* Supplier Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Supplier Name <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <select
                       value={supplierName}
                       onChange={(e) => setSupplierName(e.target.value)}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                     >
                       <option value="">Select</option>
                       {suppliers.map((s: any) => (
                         <option key={s.id} value={s.name}>{s.name}</option>
                       ))}
                     </select>
-                    <button className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black">
+                    <button className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black dark:bg-[#232323] dark:hover:bg-[#2A2A2A]">
                       <Plus className="w-5 h-5" />
                     </button>
                   </div>
@@ -414,7 +410,7 @@ export default function PurchasesPage() {
 
                 {/* Date */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Date <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
@@ -422,7 +418,7 @@ export default function PurchasesPage() {
                       type="date"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                       placeholder="dd/mm/yyyy"
                     />
                   </div>
@@ -430,21 +426,21 @@ export default function PurchasesPage() {
 
                 {/* Reference */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Reference <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
               </div>
 
               {/* Product Search */}
               <div className="mb-6 relative" ref={autocompleteRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                   Product <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -457,30 +453,30 @@ export default function PurchasesPage() {
                   }}
                   onKeyDown={handleProductSearchKeyDown}
                   placeholder="Search Product"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                 />
 
                 {/* Autocomplete Dropdown */}
                 {showAutocomplete && filteredProducts.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto dark:bg-[#1E1E1E] dark:border-[#2A2A2A]">
                     {filteredProducts.map((product, index) => (
                       <div
                         key={product.id}
                         onClick={() => addProductToTable(product)}
                         className={`px-4 py-3 cursor-pointer transition-colors ${
                           index === selectedProductIndex
-                            ? 'bg-indigo-50 border-l-4 border-indigo-500'
-                            : 'hover:bg-gray-50'
+                            ? 'bg-indigo-50 border-l-4 border-indigo-500 dark:bg-indigo-500/10'
+                            : 'hover:bg-gray-50 dark:hover:bg-[#232323]'
                         }`}
                       >
                         <div className="flex justify-between items-center">
                           <div>
-                            <p className="font-medium text-gray-900">{product.name}</p>
-                            <p className="text-sm text-gray-500">SKU: {product.sku}</p>
+                            <p className="font-medium text-gray-900 dark:text-[#F8FAFC]">{product.name}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">SKU: {product.sku}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium text-gray-900">₹{product.price.toFixed(2)}</p>
-                            <p className="text-sm text-gray-500">Tax: {product.tax}%</p>
+                            <p className="font-medium text-gray-900 dark:text-[#F8FAFC]">{formatCurrency(product.price)}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Tax: {product.tax}%</p>
                           </div>
                         </div>
                       </div>
@@ -490,46 +486,46 @@ export default function PurchasesPage() {
 
                 {/* No results message */}
                 {showAutocomplete && productSearch.trim() !== '' && filteredProducts.length === 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4">
-                    <p className="text-gray-500 text-center">No products found</p>
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 dark:bg-[#1E1E1E] dark:border-[#2A2A2A]">
+                    <p className="text-gray-500 text-center dark:text-gray-400">No products found</p>
                   </div>
                 )}
               </div>
 
               {/* Products Table */}
-              <div className="mb-6 border border-gray-300 rounded-lg overflow-hidden">
+              <div className="mb-6 border border-gray-300 rounded-lg overflow-hidden dark:border-[#2A2A2A]">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-[#1E1E1E]">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Purchase Price(₹)</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Discount(₹)</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tax(%)</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tax Amount(₹)</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost(₹)</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Cost(₹)</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Action</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Product</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Qty</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Purchase Price(₹)</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Discount(₹)</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Tax(%)</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Tax Amount(₹)</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Unit Cost(₹)</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Total Cost(₹)</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase dark:text-gray-400">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {products.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">
                           No products added. Search and add products above.
                         </td>
                       </tr>
                     ) : (
                       products.map((product, index) => (
-                        <tr key={product.id} className="border-t border-gray-200">
+                        <tr key={product.id} className="border-t border-gray-200 dark:border-[#2A2A2A]">
                           <td className="px-4 py-3 text-sm">{product.name}</td>
                           <td className="px-4 py-3 text-center text-sm">{product.qty}</td>
-                          <td className="px-4 py-3 text-right text-sm">₹{product.purchasePrice.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right text-sm">₹{product.discount.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatCurrency(product.purchasePrice)}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatCurrency(product.discount)}</td>
                           <td className="px-4 py-3 text-right text-sm">{product.tax}%</td>
-                          <td className="px-4 py-3 text-right text-sm">₹{product.taxAmount.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right text-sm">₹{product.unitCost.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right text-sm">₹{product.totalCost.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatCurrency(product.taxAmount)}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatCurrency(product.unitCost)}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatCurrency(product.totalCost)}</td>
                           <td className="px-4 py-3 text-center">
                             <button
                               onClick={() => setProducts(products.filter((_, i) => i !== index))}
@@ -564,52 +560,52 @@ export default function PurchasesPage() {
               <div className="grid grid-cols-4 gap-4 mb-6">
                 {/* Order Tax */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Order Tax <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={orderTax}
                     onChange={(e) => setOrderTax(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
 
                 {/* Discount */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Discount <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={discount}
                     onChange={(e) => setDiscount(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
 
                 {/* Shipping */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Shipping <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={shipping}
                     onChange={(e) => setShipping(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
 
                 {/* Status */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Status <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   >
                     <option value="">Select</option>
                     <option value="Received">Received</option>
@@ -621,7 +617,7 @@ export default function PurchasesPage() {
 
               {/* Description */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                   Description
                 </label>
                 <div className="border border-gray-300 rounded-lg overflow-hidden">
@@ -652,22 +648,8 @@ export default function PurchasesPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
-                >
-                  Submit
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
+        </GlobalModal>
       )}
     </div>
   );

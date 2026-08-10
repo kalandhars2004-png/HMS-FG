@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ClipboardList, Search, Plus, Filter, Clock, CheckCircle, XCircle } from '@/components/ui/LucideIcon';
 import Link from 'next/link';
+import { formatCurrency } from '@/lib/currency';
 
 export default function PrescriptionsPage() {
   const [tab, setTab] = useState('pending');
@@ -66,7 +67,7 @@ export default function PrescriptionsPage() {
                   <td className="px-4 py-3 text-sm text-gray-900">{rx.patient}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{rx.doctor}</td>
                   <td className="px-4 py-3 text-sm text-gray-600 text-center">{rx.medicines}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">₹{rx.total.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">{formatCurrency(rx.total)}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                       rx.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :

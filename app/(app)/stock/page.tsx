@@ -1,310 +1,640 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Search, Eye, Edit, Trash2, FileText, Sheet, RotateCw } from '@/components/ui/LucideIcon';
-import { ProductsAPI, TransactionsAPI } from '@/lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  RotateCw, Maximize, House, Search, CalendarDays, Filter, Columns, ArrowUpDown,
+  ArrowUpToLine, ChevronDown, X, Check, EllipsisVertical, Layers2, AlertTriangle,
+} from '@/components/ui/LucideIcon';
+import { ProductsAPI } from '@/lib/api';
 
-interface Stock {
-  id: string;
-  warehouse: string;
-  store: string;
-  product: {
-    name: string;
-    icon: string;
-  };
-  date: string;
-  person: {
-    name: string;
-    initials: string;
-  };
-  quantity: number;
+interface LowStockEntry {
+  sku: string;
+  item: string;
+  category: string;
+  currentStock: number;
+  minStockLevel: number;
+  reorderQty: number;
+  supplier: string;
+  status: 'Critical' | 'Low stock';
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
+const CATEGORY_BADGE: Record<string, string> = {
+  Tablet: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
+  Syrup: 'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-400',
+  Injection: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
+  Oinment: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400',
+  Capsule: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  Drops: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
+  'Medical Devices': 'bg-gray-100 text-gray-700 dark:bg-white/[0.06] dark:text-gray-300',
+  Supplements: 'bg-lime-50 text-lime-700 dark:bg-lime-500/10 dark:text-lime-400',
+  Uncategorized: 'bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400',
+};
 
-function getInitials(name: string): string {
-  if (!name) return '?';
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-}
+const STATUS_BADGE: Record<string, string> = {
+  danger: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  warning: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+};
 
-export default function ManageStockPage() {
-  const [stocks, setStocks] = useState<Stock[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const SUPPLIER_AVATARS: Record<string, string> = {
+  'MedLife Distributors': 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+  'HealthCare Pharma': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'GreenCross Medicals': 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+  'NovaCure Pharma': 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  'CareWell Agency': 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+  'Zenith Distributors': 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
+  'LifeLine Pharma': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+  'SafeMeds Distribution': 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
+  'NovaHealth Pharma': 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+  'PrimeCare Pharma': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
+};
+
+const TEMPLATE_ROWS: LowStockEntry[] = [
+  { sku: '#TAB016', item: 'Paracetamol 500', category: 'Tablet', currentStock: 20, minStockLevel: 200, reorderQty: 180, supplier: 'MedLife Distributors', status: 'Critical' },
+  { sku: '#TAB015', item: 'Amoxicillin 250', category: 'Tablet', currentStock: 200, minStockLevel: 300, reorderQty: 100, supplier: 'HealthCare Pharma', status: 'Low stock' },
+  { sku: '#SYR014', item: 'Cetirizine', category: 'Syrup', currentStock: 40, minStockLevel: 100, reorderQty: 60, supplier: 'GreenCross Medicals', status: 'Low stock' },
+  { sku: '#TAB013', item: 'Ceftriaxone 20', category: 'Tablet', currentStock: 120, minStockLevel: 200, reorderQty: 80, supplier: 'NovaCure Pharma', status: 'Low stock' },
+  { sku: '#CRE012', item: 'Betnovate', category: 'Oinment', currentStock: 60, minStockLevel: 100, reorderQty: 40, supplier: 'CareWell Agency', status: 'Low stock' },
+  { sku: '#TAB011', item: 'Amoxicillin 30', category: 'Tablet', currentStock: 310, minStockLevel: 400, reorderQty: 90, supplier: 'Zenith Distributors', status: 'Low stock' },
+  { sku: '#INJ010', item: 'Tetanus Toxoid', category: 'Injection', currentStock: 250, minStockLevel: 300, reorderQty: 50, supplier: 'LifeLine Pharma', status: 'Critical' },
+  { sku: '#SYR009', item: 'Atorvastatin', category: 'Syrup', currentStock: 35, minStockLevel: 100, reorderQty: 65, supplier: 'SafeMeds Distribution', status: 'Low stock' },
+  { sku: '#TAB008', item: 'Metformin 100', category: 'Tablet', currentStock: 150, minStockLevel: 200, reorderQty: 50, supplier: 'NovaHealth Pharma', status: 'Low stock' },
+  { sku: '#INJ007', item: 'Ondansetron', category: 'Injection', currentStock: 120, minStockLevel: 200, reorderQty: 80, supplier: 'PrimeCare Pharma', status: 'Low stock' },
+];
+
+const statusTone = (status: string): keyof typeof STATUS_BADGE =>
+  status === 'Critical' ? 'danger' : 'warning';
+
+const COLUMN_DEFS = ['SKU', 'Items', 'Category', 'Current Stock', 'Minimum Stock Level', 'Reorder Quantity', 'Supplier', 'Status'];
+
+const MEDICINE_OPTIONS = ['Paracetamol 500', 'Amoxicillin 250', 'Cetirizine', 'Ceftriaxone 20', 'Betnovate', 'Amoxicillin 30', 'Tetanus Toxoid', 'Atorvastatin'];
+const CATEGORY_OPTIONS = ['Uncategorized', 'Tablet', 'Capsule', 'Oinment', 'Syrup', 'Drops', 'Medical Devices', 'Supplements'];
+const SUPPLIER_OPTIONS = ['MedLife Distributors', 'HealthCare Pharma', 'GreenCross Medicals', 'NovaCure Pharma', 'CareWell Agency', 'Zenith Distributors', 'LifeLine Pharma', 'SafeMeds Distribution'];
+const STATUS_OPTIONS = ['Critical', 'Low Stock'];
+
+const cardCls = 'bg-white dark:bg-[#161B22] rounded-[0.85rem] border border-gray-200/70 dark:border-[#273244] shadow-[0_2px_10px_rgba(15,23,42,0.04)] dark:shadow-none';
+const dropdownBtnCls = 'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250';
+
+export default function LowStockPage() {
+  const [rows, setRows] = useState<LowStockEntry[]>(TEMPLATE_ROWS);
   const [searchQuery, setSearchQuery] = useState('');
-  const [warehouseFilter, setWarehouseFilter] = useState('');
-  const [storeFilter, setStoreFilter] = useState('');
-  const [productFilter, setProductFilter] = useState('');
+  const [openDropdown, setOpenDropdown] = useState<'columns' | 'sort' | 'export' | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(COLUMN_DEFS));
+  const [sortBy, setSortBy] = useState('Items A-Z');
+  const [showFilter, setShowFilter] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [entriesPerPage, setEntriesPerPage] = useState(10);
+  const [medFilter, setMedFilter] = useState<string[]>([]);
+  const [catFilter, setCatFilter] = useState<string[]>([]);
+  const [supFilter, setSupFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [medMore, setMedMore] = useState(false);
+  const [catMore, setCatMore] = useState(false);
+  const [supMore, setSupMore] = useState(false);
+  const [medSearch, setMedSearch] = useState('');
+  const [catSearch, setCatSearch] = useState('');
+  const [supSearch, setSupSearch] = useState('');
 
   useEffect(() => {
-    loadStocks();
+    ProductsAPI.getAll().then((res: any) => {
+      const list: any[] = res.data || [];
+      if (list.length > 0) {
+        const mapped: LowStockEntry[] = list.slice(0, 10).map((p: any, i: number) => {
+          const qty = Number(p.quantity ?? p.stockQuantity ?? 0);
+          const min = Number(p.minStockLevel ?? p.reorderLevel ?? p.minimumStock ?? (qty * 2 || 100));
+          return {
+            sku: p.sku || `#TAB${String(16 - i).padStart(3, '0')}`,
+            item: p.name || 'Unnamed',
+            category: p.categoryName || 'Tablet',
+            currentStock: qty,
+            minStockLevel: min,
+            reorderQty: Number(p.reorderQuantity ?? Math.max(10, min - qty)),
+            supplier: p.supplierName || 'MedLife Distributors',
+            status: qty === 0 || qty < min * 0.15 ? 'Critical' : 'Low stock',
+          };
+        });
+        setRows(mapped);
+      }
+    }).catch(() => {});
   }, []);
 
-  const loadStocks = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const [productsRes, transactionsRes] = await Promise.all([
-        ProductsAPI.getAll(),
-        TransactionsAPI.getAll(),
-      ]);
-
-      const products: any[] = (productsRes as any).data || [];
-      const transactions: any[] = (transactionsRes as any).data || [];
-
-      const stockList: Stock[] = products.map(product => {
-        const productTxns = transactions.filter(
-          tx => tx.product && (tx.product.id === product.id || tx.product.name === product.name)
-        );
-        const latestTx = productTxns.length > 0 ? productTxns[productTxns.length - 1] : null;
-
-        return {
-          id: String(product.id),
-          warehouse: product.categoryName || 'Main Warehouse',
-          store: '',
-          product: {
-            name: product.name || 'Unknown',
-            icon: '📦',
-          },
-          date: latestTx ? formatDate(latestTx.createdAt) : (product.createdAt ? formatDate(product.createdAt) : ''),
-          person: {
-            name: latestTx?.user?.name || '-',
-            initials: latestTx?.user?.name ? getInitials(latestTx.user.name) : '-',
-          },
-          quantity: product.stockQuantity ?? product.quantity ?? 0,
-        };
-      });
-
-      setStocks(stockList);
-    } catch (err: any) {
-      console.error('Failed to load stocks:', err);
-      setError(err?.message || 'Failed to load stocks');
-    } finally {
-      setIsLoading(false);
-    }
+  const toggleColumn = (col: string) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      return next;
+    });
   };
 
-  const filteredStocks = stocks.filter(stock => {
-    const matchesSearch = stock.product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         stock.warehouse.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesWarehouse = warehouseFilter === '' || stock.warehouse === warehouseFilter;
-    const matchesStore = storeFilter === '' || stock.store === storeFilter;
-    const matchesProduct = productFilter === '' || stock.product.name === productFilter;
-    return matchesSearch && matchesWarehouse && matchesStore && matchesProduct;
-  });
-
-  const warehouses = Array.from(new Set(stocks.map(s => s.warehouse)));
-  const stores = Array.from(new Set(stocks.map(s => s.store)));
-  const products = Array.from(new Set(stocks.map(s => s.product.name)));
-
-  const getAvatarColor = (index: number) => {
-    const colors = [
-      'bg-blue-500',
-      'bg-green-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-indigo-500',
-      'bg-orange-500',
-    ];
-    return colors[index % colors.length];
-  };
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
-            <p className="text-red-500">Failed to load stocks. Please try again.</p>
-          </div>
-        </div>
-      </div>
+  const filtered = useMemo(() => {
+    let list = rows.filter(r =>
+      (r.item.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       r.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       r.supplier.toLowerCase().includes(searchQuery.toLowerCase()))
     );
-  }
+    if (medFilter.length > 0) list = list.filter(r => medFilter.includes(r.item));
+    if (catFilter.length > 0) list = list.filter(r => catFilter.includes(r.category));
+    if (supFilter.length > 0) list = list.filter(r => supFilter.includes(r.supplier));
+    if (statusFilter.length > 0) list = list.filter(r => statusFilter.includes(r.status));
+    switch (sortBy) {
+      case 'Items A-Z': list = [...list].sort((a, b) => a.item.localeCompare(b.item)); break;
+      case 'Items Z-A': list = [...list].sort((a, b) => b.item.localeCompare(a.item)); break;
+      case 'Supplier A-Z': list = [...list].sort((a, b) => a.supplier.localeCompare(b.supplier)); break;
+      case 'Supplier Z-A': list = [...list].sort((a, b) => b.supplier.localeCompare(a.supplier)); break;
+      case 'Current Stock High-Low': list = [...list].sort((a, b) => b.currentStock - a.currentStock); break;
+      case 'Current Stock Low-High': list = [...list].sort((a, b) => a.currentStock - b.currentStock); break;
+    }
+    return list;
+  }, [rows, searchQuery, medFilter, catFilter, supFilter, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / entriesPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * entriesPerPage, safePage * entriesPerPage);
+
+  const startEntry = filtered.length === 0 ? 0 : (safePage - 1) * entriesPerPage + 1;
+  const endEntry = Math.min(safePage * entriesPerPage, filtered.length);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
+    else { document.exitFullscreen?.(); setIsFullscreen(false); }
+  };
+
+  const applyFilter = () => {
+    setShowFilter(false);
+    setCurrentPage(1);
+  };
+
+  const resetFilter = () => {
+    setMedFilter([]); setCatFilter([]); setSupFilter([]); setStatusFilter([]);
+    setMedSearch(''); setCatSearch(''); setSupSearch('');
+    setMedMore(false); setCatMore(false); setSupMore(false);
+  };
+
+  const toggleFilter = (list: string[], set: (v: string[]) => void, value: string) =>
+    set(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
+
+  const filteredMeds = MEDICINE_OPTIONS.filter(m => m.toLowerCase().includes(medSearch.toLowerCase()));
+  const filteredCats = CATEGORY_OPTIONS.filter(c => c.toLowerCase().includes(catSearch.toLowerCase()));
+  const filteredSups = SUPPLIER_OPTIONS.filter(s => s.toLowerCase().includes(supSearch.toLowerCase()));
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-[1600px] mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Manage Stock</h1>
-          <p className="text-sm text-gray-600 mt-1">Manage your stock</p>
+    <div className="p-6 animate-fadeIn">
+      {/* Breadcrumb */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <nav aria-label="breadcrumb">
+          <ol className="flex items-center gap-1.5 m-0 p-0 list-none text-sm">
+            <li className="flex items-center gap-1.5">
+              <a href="/dashboard" className="text-gray-500 hover:text-gray-700 no-underline flex items-center gap-1.5">
+                <House className="w-4 h-4" /> Dashboard
+              </a>
+              <span className="text-gray-300 mx-1">/</span>
+            </li>
+            <li className="text-gray-900 font-medium" aria-current="page">Low Stock</li>
+          </ol>
+        </nav>
+        <div className="flex items-center gap-2">
+          <button title="Refresh" className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all duration-250 shadow-sm">
+            <RotateCw className="w-4 h-4" />
+          </button>
+          <button
+            title="Maximize"
+            onClick={toggleFullscreen}
+            className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all duration-250 shadow-sm"
+          >
+            <Maximize className="w-4 h-4" />
+          </button>
         </div>
+      </div>
 
-        {/* Top Actions Bar */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="flex justify-between items-center gap-4 flex-wrap">
-            {/* Left side - Search */}
-            <div className="relative w-96">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              />
+      {/* Main Card */}
+      <div className={cardCls}>
+        {/* Card Header */}
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center flex-wrap sm:flex-nowrap gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                  className="h-9 w-56 pl-9 pr-3 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250"
+                />
+              </div>
+              <div className="relative">
+                <CalendarDays className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Date Range"
+                  className="h-9 w-44 pl-9 pr-3 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250 cursor-pointer"
+                />
+              </div>
             </div>
-
-            {/* Right side - Filters and buttons */}
-            <div className="flex gap-2 items-center">
-              <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                <FileText className="w-5 h-5 text-red-500" />
-              </button>
-              <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                <Sheet className="w-5 h-5 text-green-600" />
-              </button>
-              <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                <RotateCw className="w-5 h-5 text-gray-600" />
-              </button>
-
-              <select
-                value={warehouseFilter}
-                onChange={(e) => setWarehouseFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            <div className="flex items-center flex-wrap gap-2">
+              <button
+                onClick={() => setShowFilter(true)}
+                title="Filter"
+                className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250"
               >
-                <option value="">Warehouse</option>
-                {warehouses.map((warehouse) => (
-                  <option key={warehouse} value={warehouse}>
-                    {warehouse}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={storeFilter}
-                onChange={(e) => setStoreFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="">Store</option>
-                {stores.map((store) => (
-                  <option key={store} value={store}>
-                    {store}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={productFilter}
-                onChange={(e) => setProductFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="">Product</option>
-                {products.map((product) => (
-                  <option key={product} value={product}>
-                    {product}
-                  </option>
-                ))}
-              </select>
-
-              <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-2 font-medium">
-                <span className="text-lg">+</span> Add Stock
+                <Filter className="w-4 h-4" />
               </button>
+
+              {/* Columns */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'columns' ? null : 'columns')}
+                  className={dropdownBtnCls}
+                >
+                  <Columns className="w-4 h-4" /> Columns
+                </button>
+                {openDropdown === 'columns' && (
+                  <div className="absolute right-0 top-full mt-1 z-[60] bg-white dark:bg-[#161B22] rounded-xl border border-gray-200 dark:border-[#273244] shadow-xl py-2 w-52 animate-scaleIn">
+                    {COLUMN_DEFS.map(col => (
+                      <label key={col} className="flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
+                        <EllipsisVertical className="w-4 h-4 text-gray-300" />
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns.has(col)}
+                          onChange={() => toggleColumn(col)}
+                          className="w-4 h-4 accent-[#0F9291] rounded"
+                        />
+                        {col}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sort by */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'sort' ? null : 'sort')}
+                  className={dropdownBtnCls}
+                >
+                  <ArrowUpDown className="w-4 h-4" /> Sort by
+                </button>
+                {openDropdown === 'sort' && (
+                  <div className="absolute right-0 top-full mt-1 z-[60] bg-white dark:bg-[#161B22] rounded-xl border border-gray-200 dark:border-[#273244] shadow-xl py-2 w-56 animate-scaleIn">
+                    {[
+                      ['Items', 'A-Z'], ['Items', 'Z-A'], ['Supplier', 'A-Z'], ['Supplier', 'Z-A'],
+                      ['Current Stock', 'High-Low'], ['Current Stock', 'Low-High'],
+                    ].map(([label, sub]) => {
+                      const key = `${label} ${sub}`;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => { setSortBy(key); setOpenDropdown(null); }}
+                          className={`flex items-center justify-between w-full px-3 py-2 text-sm transition-colors ${sortBy === key ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]'}`}
+                        >
+                          {label} <span className="text-xs text-gray-400">{sub}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Export */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'export' ? null : 'export')}
+                  className={dropdownBtnCls}
+                >
+                  <ArrowUpToLine className="w-4 h-4" /> Export
+                </button>
+                {openDropdown === 'export' && (
+                  <div className="absolute right-0 top-full mt-1 z-[60] bg-white dark:bg-[#161B22] rounded-xl border border-gray-200 dark:border-[#273244] shadow-xl py-2 w-44 animate-scaleIn">
+                    {['Export as PDF', 'Export as Excel'].map(opt => (
+                      <button
+                        key={opt}
+                        onClick={() => setOpenDropdown(null)}
+                        className="block w-full text-left px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Table */}
-        {isLoading ? (
-          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Warehouse
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Store
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Person
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Qty
-                    </th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {filteredStocks.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                        No stocks found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStocks.map((stock, index) => (
-                      <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">{stock.warehouse}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">{stock.store}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl">{stock.product.icon}</span>
-                            <span className="text-sm font-medium text-gray-900">{stock.product.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">{stock.date}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${getAvatarColor(index)}`}>
-                              {stock.person.initials}
-                            </div>
-                            <span className="text-sm text-gray-900">{stock.person.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{stock.quantity}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-red-600"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50/80 dark:bg-[#111827] border-b border-gray-100 dark:border-white/[0.06]">
+                {COLUMN_DEFS.filter(c => visibleColumns.has(c)).map(h => (
+                  <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-white/[0.05]">
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={COLUMN_DEFS.filter(c => visibleColumns.has(c)).length} className="px-5 py-16 text-center">
+                    <Layers2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm mb-1">No low stock items found</p>
+                  </td>
+                </tr>
+              ) : paginated.map((row, i) => (
+                <tr key={`${row.sku}-${i}`} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors duration-250">
+                  {visibleColumns.has('SKU') && (
+                    <td className="px-5 py-4 whitespace-nowrap text-sm text-[#0F9291] font-medium">{row.sku}</td>
                   )}
-                </tbody>
-              </table>
+                  {visibleColumns.has('Items') && (
+                    <td className="px-5 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-[#F8FAFC]">{row.item}</td>
+                  )}
+                  {visibleColumns.has('Category') && (
+                    <td className="px-5 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${CATEGORY_BADGE[row.category] || CATEGORY_BADGE.Uncategorized}`}>
+                        {row.category}
+                      </span>
+                    </td>
+                  )}
+                  {visibleColumns.has('Current Stock') && (
+                    <td className="px-5 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{row.currentStock}</td>
+                  )}
+                  {visibleColumns.has('Minimum Stock Level') && (
+                    <td className="px-5 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{row.minStockLevel}</td>
+                  )}
+                  {visibleColumns.has('Reorder Quantity') && (
+                    <td className="px-5 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{row.reorderQty}</td>
+                  )}
+                  {visibleColumns.has('Supplier') && (
+                    <td className="px-5 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-[#F8FAFC]">
+                        <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${SUPPLIER_AVATARS[row.supplier] || 'bg-gray-100 text-gray-600'}`}>
+                          {row.supplier.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                        </span>
+                        {row.supplier}
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.has('Status') && (
+                    <td className="px-5 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[statusTone(row.status)]}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {row.status}
+                      </span>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Footer */}
+        <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-gray-100 dark:border-white/[0.06]">
+          <p className="text-sm text-gray-500 dark:text-gray-400 m-0">
+            Showing {startEntry} to {endEntry} of {filtered.length} entries
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-250"
+            >
+              <ChevronDown className="w-4 h-4 rotate-90" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                onClick={() => setCurrentPage(p)}
+                className={`flex items-center justify-center w-8 h-8 rounded-lg text-sm font-medium transition-all duration-250 ${p === safePage ? 'bg-[#0F9291] text-white shadow-sm shadow-[#0F9291]/30' : 'border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-250"
+            >
+              <ChevronDown className="w-4 h-4 -rotate-90" />
+            </button>
+          </div>
+          <select
+            value={entriesPerPage}
+            onChange={e => { setEntriesPerPage(Number(e.target.value)); setCurrentPage(1); }}
+            className="h-9 px-3 pr-8 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] text-gray-600 dark:text-gray-300 focus:outline-none focus:border-[#0F9291] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2214%22%20height=%2214%22%20viewBox=%220%200%2024%2024%22%20fill=%22none%22%20stroke=%22%2394a3b8%22%20stroke-width=%222.5%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22m6%209%206%206%206-6%22/%3E%3C/svg%3E')] bg-no-repeat bg-[right_10px_center]"
+          >
+            {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Filter Drawer */}
+      {showFilter && (
+        <div className="fixed inset-0 z-[1000] flex justify-end bg-black/40 dark:bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={() => setShowFilter(false)}>
+          <div
+            className="w-full max-w-md h-full bg-white dark:bg-[#121218] shadow-2xl flex flex-col animate-slide-in-right"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center justify-center w-9 h-9 rounded-full bg-[#0F9291]/10 text-[#0F9291]">
+                  <Filter className="w-4 h-4" />
+                </span>
+                <h3 className="text-base font-bold text-gray-900 dark:text-[#F8FAFC] m-0">Filter</h3>
+              </div>
+              <button onClick={() => setShowFilter(false)} className="flex items-center justify-center w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06] hover:text-gray-600 transition-all duration-200">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              {/* Medicine */}
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC] mb-3 flex items-center gap-2">
+                  Medicine
+                  <button
+                    onClick={() => setMedFilter([])}
+                    className="ml-auto text-xs font-medium text-[#0F9291] hover:underline"
+                  >
+                    Clear
+                  </button>
+                </h4>
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={medSearch}
+                    onChange={e => setMedSearch(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250"
+                  />
+                </div>
+                <div className="space-y-1">
+                  {filteredMeds.slice(0, medMore ? filteredMeds.length : 5).map(med => (
+                    <label key={med} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                      <span className={`flex items-center justify-center w-7 h-7 rounded-lg text-[10px] font-bold ${medFilter.includes(med) ? 'bg-[#0F9291] text-white' : 'bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400'}`}>
+                        {med.split(' ').map(w => w[0]).join('').slice(0, 2)}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={medFilter.includes(med)}
+                        onChange={() => toggleFilter(medFilter, setMedFilter, med)}
+                        className="w-4 h-4 accent-[#0F9291] rounded ml-auto"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{med}</span>
+                    </label>
+                  ))}
+                </div>
+                {filteredMeds.length > 5 && (
+                  <button
+                    onClick={() => setMedMore(!medMore)}
+                    className="mt-2 text-sm font-medium text-[#0F9291] hover:underline"
+                  >
+                    {medMore ? 'View Less' : 'View More'}
+                  </button>
+                )}
+              </div>
+
+              {/* Category */}
+              <div className="pt-5 border-t border-gray-100 dark:border-white/[0.06]">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC] mb-3 flex items-center gap-2">
+                  Category
+                  <button
+                    onClick={() => setCatFilter([])}
+                    className="ml-auto text-xs font-medium text-[#0F9291] hover:underline"
+                  >
+                    Clear
+                  </button>
+                </h4>
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={catSearch}
+                    onChange={e => setCatSearch(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250"
+                  />
+                </div>
+                <div className="space-y-1">
+                  {filteredCats.slice(0, catMore ? filteredCats.length : 5).map(cat => (
+                    <label key={cat} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={catFilter.includes(cat)}
+                        onChange={() => toggleFilter(catFilter, setCatFilter, cat)}
+                        className="w-4 h-4 accent-[#0F9291] rounded"
+                      />
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${CATEGORY_BADGE[cat] || CATEGORY_BADGE.Uncategorized}`}>
+                        {cat}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {filteredCats.length > 5 && (
+                  <button
+                    onClick={() => setCatMore(!catMore)}
+                    className="mt-2 text-sm font-medium text-[#0F9291] hover:underline"
+                  >
+                    {catMore ? 'View Less' : 'View More'}
+                  </button>
+                )}
+              </div>
+
+              {/* Supplier */}
+              <div className="pt-5 border-t border-gray-100 dark:border-white/[0.06]">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC] mb-3 flex items-center gap-2">
+                  Supplier
+                  <button
+                    onClick={() => setSupFilter([])}
+                    className="ml-auto text-xs font-medium text-[#0F9291] hover:underline"
+                  >
+                    Clear
+                  </button>
+                </h4>
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={supSearch}
+                    onChange={e => setSupSearch(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#161B22] focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250"
+                  />
+                </div>
+                <div className="space-y-1">
+                  {filteredSups.slice(0, supMore ? filteredSups.length : 5).map(sup => (
+                    <label key={sup} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                      <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${SUPPLIER_AVATARS[sup] || 'bg-gray-100 text-gray-600'}`}>
+                        {sup.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={supFilter.includes(sup)}
+                        onChange={() => toggleFilter(supFilter, setSupFilter, sup)}
+                        className="w-4 h-4 accent-[#0F9291] rounded ml-auto"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{sup}</span>
+                    </label>
+                  ))}
+                </div>
+                {filteredSups.length > 5 && (
+                  <button
+                    onClick={() => setSupMore(!supMore)}
+                    className="mt-2 text-sm font-medium text-[#0F9291] hover:underline"
+                  >
+                    {supMore ? 'View Less' : 'View More'}
+                  </button>
+                )}
+              </div>
+
+              {/* Status */}
+              <div className="pt-5 border-t border-gray-100 dark:border-white/[0.06]">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC] mb-3 flex items-center gap-2">
+                  Status
+                  <button
+                    onClick={() => setStatusFilter([])}
+                    className="ml-auto text-xs font-medium text-[#0F9291] hover:underline"
+                  >
+                    Clear
+                  </button>
+                </h4>
+                <div className="space-y-1">
+                  {STATUS_OPTIONS.map(status => (
+                    <label key={status} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={statusFilter.includes(status)}
+                        onChange={() => toggleFilter(statusFilter, setStatusFilter, status)}
+                        className="w-4 h-4 accent-[#0F9291] rounded"
+                      />
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${status === 'Critical' ? STATUS_BADGE.danger : STATUS_BADGE.warning}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {status}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="flex items-center justify-between gap-2 flex-wrap px-6 py-4 border-t border-gray-100 dark:border-white/[0.06]">
+              <button
+                onClick={resetFilter}
+                className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-[#1F2937] hover:bg-gray-200 dark:hover:bg-[#273244] transition-all duration-250"
+              >
+                <X className="w-4 h-4" /> Cancel
+              </button>
+              <button
+                onClick={applyFilter}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#0F9291] text-white text-sm font-semibold hover:bg-teal-700 transition-all duration-250 shadow-sm shadow-[#0F9291]/25"
+              >
+                <Check className="w-4 h-4" /> Apply Filter
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

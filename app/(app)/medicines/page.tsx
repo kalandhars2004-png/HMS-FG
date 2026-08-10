@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ProductsAPI } from '@/lib/api';
 import { CATEGORY_ICONS } from '@/lib/constants';
+import { formatCurrency } from '@/lib/currency';
 import {
   Search, Edit, Trash2, Timer, ScanBarcode,
   RotateCw, Plus, Maximize, EllipsisVertical,
   House, X, AlertTriangle, CheckCircle2,
 } from '@/components/ui/LucideIcon';
+import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
 
 interface MedicineDisplay {
   id: string;
@@ -26,9 +28,9 @@ interface MedicineDisplay {
 }
 
 const STOCK_STATUS_STYLES: Record<string, { dot: string; bg: string }> = {
-  'In Stock': { dot: 'bg-emerald-500', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  'Low Stock': { dot: 'bg-orange-500', bg: 'bg-orange-50 text-orange-700 border-orange-200' },
-  'Out of Stock': { dot: 'bg-red-500', bg: 'bg-red-50 text-red-700 border-red-200' },
+  'In Stock': { dot: 'bg-emerald-500', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/30' },
+  'Low Stock': { dot: 'bg-orange-500', bg: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-700/30' },
+  'Out of Stock': { dot: 'bg-red-500', bg: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700/30' },
 };
 
 function getStockStatus(qty: number): 'In Stock' | 'Low Stock' | 'Out of Stock' {
@@ -117,6 +119,9 @@ export default function MedicinesPage() {
 
   useEffect(() => {
     loadMedicines();
+    const onFocus = () => { if (!isLoading) loadMedicines(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [loadMedicines]);
 
   useEffect(() => {
@@ -173,7 +178,7 @@ export default function MedicinesPage() {
       {/* Toast */}
       {toast.show && (
         <div className={`fixed top-6 right-6 z-[1060] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border animate-slideDown ${
-          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-700/30 dark:text-emerald-300' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700/30 dark:text-red-300'
         }`}>
           {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
           <span className="text-sm font-medium">{toast.message}</span>
@@ -185,61 +190,48 @@ export default function MedicinesPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[1050] animate-fadeIn" onClick={() => !isDeleting && setDeleteTarget(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full mx-4 animate-scaleIn" onClick={e => e.stopPropagation()}>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
-                <AlertTriangle className="w-8 h-8 text-red-500" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Medicine</h3>
-              <p className="text-sm text-gray-500 mb-1">Are you sure you want to delete</p>
-              <p className="text-sm font-semibold text-gray-900 mb-6">&ldquo;{deleteTarget.name}&rdquo;?</p>
-              <p className="text-xs text-gray-400 mb-6">This action cannot be undone.</p>
-              <div className="flex gap-3 w-full">
-                <button onClick={() => setDeleteTarget(null)} disabled={isDeleting}
-                  className="flex-1 px-5 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all duration-250 disabled:opacity-50"
-                >Cancel</button>
-                <button onClick={handleDeleteConfirm} disabled={isDeleting}
-                  className="flex-1 px-5 py-3 rounded-2xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-all duration-250 disabled:opacity-50 flex items-center justify-center gap-2"
-                >{isDeleting ? (
-                    <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (<><Trash2 className="w-4 h-4" /> Delete</>)}</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <GlobalConfirmModal
+          onClose={() => !isDeleting && setDeleteTarget(null)}
+          title="Delete Medicine"
+          confirmLabel="Delete"
+          onConfirm={handleDeleteConfirm}
+          submitting={isDeleting}
+          danger
+        >
+          <p className="text-sm text-gray-500 dark:text-[#94A3B8] mb-1">Are you sure you want to delete</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-[#F8FAFC] mb-6">&ldquo;{deleteTarget.name}&rdquo;?</p>
+          <p className="text-xs text-gray-400 dark:text-[#64748B] mb-6">This action cannot be undone.</p>
+        </GlobalConfirmModal>
       )}
 
       {/* Barcode/QR Modal */}
       {barcodeTarget && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[1050] animate-fadeIn" onClick={() => setBarcodeTarget(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full mx-4 animate-scaleIn" onClick={e => e.stopPropagation()}>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center mb-4">
-                <ScanBarcode className="w-8 h-8 text-teal-600" />
+        <GlobalModal
+          onClose={() => setBarcodeTarget(null)}
+          title="Barcode / QR"
+          subtitle={barcodeTarget.sku}
+          size="sm"
+          hideFooter
+          icon={<ScanBarcode className="w-5 h-5" />}
+        >
+          <div className="flex flex-col items-center text-center">
+            <div className="w-full border-2 border-dashed border-gray-200 dark:border-[#273244] rounded-2xl p-6 mb-4">
+              <div className="flex justify-center mb-3">
+                <div className="font-mono text-3xl tracking-[0.3em] text-gray-800 dark:text-[#F8FAFC]">||||||||||</div>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Barcode / QR</h3>
-              <div className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-6 mb-4">
-                <div className="flex justify-center mb-3">
-                  <div className="font-mono text-3xl tracking-[0.3em] text-gray-800">||||||||||</div>
-                </div>
-                <div className="text-center font-mono text-sm text-gray-500 tracking-widest">{barcodeTarget.sku}</div>
-              </div>
-              <div className="w-full space-y-2 text-left text-sm mb-4">
-                <div className="flex justify-between"><span className="text-gray-500">Medicine</span><span className="font-medium text-gray-900">{barcodeTarget.name}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">SKU</span><span className="font-medium text-gray-900">{barcodeTarget.sku}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Category</span><span className="font-medium text-gray-900">{barcodeTarget.category}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Price</span><span className="font-medium text-gray-900">₹{barcodeTarget.price}</span></div>
-              </div>
-              <button onClick={() => setBarcodeTarget(null)}
-                className="w-full px-5 py-3 rounded-2xl bg-[#0F9291] text-white text-sm font-semibold hover:bg-teal-700 transition-all duration-250"
-              >Close</button>
+              <div className="text-center font-mono text-sm text-gray-500 dark:text-[#94A3B8] tracking-widest">{barcodeTarget.sku}</div>
             </div>
+            <div className="w-full space-y-2 text-left text-sm mb-4">
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-[#94A3B8]">Medicine</span><span className="font-medium text-gray-900 dark:text-[#F8FAFC]">{barcodeTarget.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-[#94A3B8]">SKU</span><span className="font-medium text-gray-900 dark:text-[#F8FAFC]">{barcodeTarget.sku}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-[#94A3B8]">Category</span><span className="font-medium text-gray-900 dark:text-[#F8FAFC]">{barcodeTarget.category}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-[#94A3B8]">Price</span><span className="font-medium text-gray-900 dark:text-[#F8FAFC]">{formatCurrency(barcodeTarget.price)}</span></div>
+            </div>
+            <button onClick={() => setBarcodeTarget(null)}
+              className="w-full px-5 py-3 rounded-2xl bg-[#0F9291] text-white text-sm font-semibold hover:bg-teal-700 transition-all duration-250"
+            >Close</button>
           </div>
-        </div>
+        </GlobalModal>
       )}
 
       {/* Breadcrumb */}
@@ -247,19 +239,19 @@ export default function MedicinesPage() {
         <nav aria-label="breadcrumb">
           <ol className="flex items-center gap-1.5 m-0 p-0 list-none text-sm">
             <li className="flex items-center gap-1.5">
-              <a href="/dashboard" className="text-gray-500 hover:text-gray-700 no-underline flex items-center gap-1.5">
+              <a href="/dashboard" className="text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F8FAFC] no-underline flex items-center gap-1.5">
                 <House className="w-4 h-4" /> Dashboard
               </a>
-              <span className="text-gray-300 mx-1">/</span>
+              <span className="text-gray-300 dark:text-[#4B5563] mx-1">/</span>
             </li>
-            <li className="text-gray-900 font-medium" aria-current="page">Medicine List</li>
+            <li className="text-gray-900 dark:text-[#F8FAFC] font-medium" aria-current="page">Medicine List</li>
           </ol>
         </nav>
         <div className="flex items-center gap-2">
-          <button onClick={loadMedicines} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Refresh">
+          <button onClick={loadMedicines} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm" title="Refresh">
             <RotateCw className="w-4 h-4" />
           </button>
-          <button className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Maximize">
+          <button className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm" title="Maximize">
             <Maximize className="w-4 h-4" />
           </button>
           <Link href="/medicines/create"
@@ -271,16 +263,16 @@ export default function MedicinesPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
         {stats.map((card, i) => (
-          <div key={i} className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] p-5 transition-all duration-250 hover:shadow-[0_15px_40px_rgba(15,23,42,0.08)] hover:-translate-y-0.5">
+          <div key={i} className="bg-white dark:bg-[#161B22] rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)] p-5 transition-all duration-250 hover:shadow-[0_15px_40px_rgba(15,23,42,0.08)] dark:hover:shadow-[0_15px_40px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 dark:hover:border-[#14B8A6]/20">
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-500 m-0 flex items-center gap-2 mb-3">
+                <p className="text-sm font-medium text-gray-500 dark:text-[#94A3B8] m-0 flex items-center gap-2 mb-3">
                   <span className="text-base">{card.icon}</span> {card.label}
                 </p>
-                <h4 className="text-2xl font-bold text-gray-900 m-0 flex items-center gap-2">
+                <h4 className="text-2xl font-bold text-gray-900 dark:text-[#F8FAFC] m-0 flex items-center gap-2">
                   {card.value}
                   <span className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-0.5 ${
-                    card.up ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                    card.up ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
                   }`}>
                     {card.trend}
                   </span>
@@ -292,16 +284,16 @@ export default function MedicinesPage() {
       </div>
 
       {/* Main Card */}
-      <div className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+      <div className="bg-white dark:bg-[#161B22] rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
         {/* Toolbar */}
-        <div className="px-4 py-3 border-b border-gray-100">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-[#273244]">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#64748B]" />
                 <input type="text" placeholder="Search" value={searchQuery}
                   onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  className="h-9 text-sm text-gray-900 border border-gray-200 rounded-xl bg-gray-50 pl-9 pr-3 w-[180px] outline-none transition-all duration-250 focus:w-[220px] focus:border-[#0F9291] focus:bg-white focus:shadow-[0_0_0_3px_rgba(15,146,145,0.1)]"
+                  className="h-9 text-sm text-gray-900 dark:text-[#F8FAFC] border border-gray-200 dark:border-[#273244] rounded-xl bg-gray-50 dark:bg-[#111827] pl-9 pr-3 w-[180px] outline-none transition-all duration-250 focus:w-[220px] focus:border-[#0F9291] focus:bg-white dark:focus:bg-[#161B22] focus:shadow-[0_0_0_3px_rgba(15,146,145,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(20,184,166,0.15)]"
                 />
               </div>
             </div>
@@ -310,18 +302,18 @@ export default function MedicinesPage() {
                 className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-all duration-250 shadow-sm ${
                   showFilter || filterCategory.length > 0 || filterStockStatus.length > 0
                     ? 'bg-[#0F9291] text-white border-[#0F9291]'
-                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                    : 'bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] border-gray-200 dark:border-[#273244] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
               </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 transition-all duration-250 shadow-sm whitespace-nowrap">
+              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 4h6m-6 4h6m-6 4h6m-3 4v4m-4 0h8" /></svg> Columns
               </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 transition-all duration-250 shadow-sm whitespace-nowrap">
+              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7h6l3-4 3 4h6l-3 4 3 4h-6l-3 4-3-4H3l3-4-3-4z" /></svg> Sort by
               </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 transition-all duration-250 shadow-sm whitespace-nowrap">
+              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Export
               </button>
             </div>
@@ -330,10 +322,10 @@ export default function MedicinesPage() {
 
         {/* Filter Panel */}
         {showFilter && (
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 animate-slideDown">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-[#273244] bg-gray-50/50 dark:bg-[#111827]/50 animate-slideDown">
             <div className="flex items-start gap-6 flex-wrap">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider mb-2">Category</p>
                 <div className="flex flex-wrap gap-2">
                   {uniqueCategories.map(cat => (
                     <label key={cat} className="flex items-center gap-1.5 cursor-pointer">
@@ -342,15 +334,15 @@ export default function MedicinesPage() {
                           setFilterCategory(prev => e.target.checked ? [...prev, cat] : prev.filter(c => c !== cat));
                           setCurrentPage(1);
                         }}
-                        className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] w-3.5 h-3.5"
+                        className="rounded border-gray-300 dark:border-[#273244] text-[#0F9291] focus:ring-[#0F9291] w-3.5 h-3.5"
                       />
-                      <span className="text-sm text-gray-700 whitespace-nowrap">{cat}</span>
+                      <span className="text-sm text-gray-700 dark:text-[#F8FAFC] whitespace-nowrap">{cat}</span>
                     </label>
                   ))}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Stock Status</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider mb-2">Stock Status</p>
                 <div className="flex flex-wrap gap-2">
                   {['In Stock', 'Low Stock', 'Out of Stock'].map(status => (
                     <label key={status} className="flex items-center gap-1.5 cursor-pointer">
@@ -359,9 +351,9 @@ export default function MedicinesPage() {
                           setFilterStockStatus(prev => e.target.checked ? [...prev, status] : prev.filter(s => s !== status));
                           setCurrentPage(1);
                         }}
-                        className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] w-3.5 h-3.5"
+                        className="rounded border-gray-300 dark:border-[#273244] text-[#0F9291] focus:ring-[#0F9291] w-3.5 h-3.5"
                       />
-                      <span className="text-sm text-gray-700 whitespace-nowrap">{status}</span>
+                      <span className="text-sm text-gray-700 dark:text-[#F8FAFC] whitespace-nowrap">{status}</span>
                     </label>
                   ))}
                 </div>
@@ -386,65 +378,65 @@ export default function MedicinesPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">SKU</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Item</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Generic Name</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Category</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantity</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Price</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Stock Value</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">HTS Code</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Stock Status</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Manufacture</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Supplier</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Expiry Date</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
-                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap"></th>
+                  <tr className="bg-gray-50/80 dark:bg-[#1A2232] border-b border-gray-100 dark:border-[#273244]">
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">SKU</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Item</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Generic Name</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Category</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Quantity</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Price</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Value</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">HTS Code</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Status</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Manufacture</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Supplier</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Expiry Date</th>
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Status</th>
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-50 dark:divide-[#111827]">
                   {paginated.length === 0 ? (
-                    <tr><td colSpan={14} className="px-4 py-16 text-center text-gray-400 text-sm">No medicines found</td></tr>
+                    <tr><td colSpan={14} className="px-4 py-16 text-center text-gray-400 dark:text-[#64748B] text-sm">No medicines found</td></tr>
                   ) : (
                     paginated.map((m) => {
                       const ss = STOCK_STATUS_STYLES[m.stockStatus];
                       const icon = CATEGORY_ICONS[m.category] || '📦';
                       return (
-                        <tr key={m.id} className="hover:bg-gray-50/50 transition-colors duration-250">
+                        <tr key={m.id} className="hover:bg-gray-50/50 dark:hover:bg-[#1F2937]/50 transition-colors duration-250">
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className="text-[#0F9291] text-sm font-medium">{m.sku}</span>
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-xs">{icon}</span>
-                              <span className="text-sm font-medium text-gray-900">{m.name}</span>
+                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-[#1F2937] text-xs">{icon}</span>
+                              <span className="text-sm font-medium text-gray-900 dark:text-[#F8FAFC]">{m.name}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500">{m.genericName}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.genericName}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-700/30">
                               {m.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">{m.quantity}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium">₹{m.price}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium">₹{m.stockValue.toLocaleString()}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500">-</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC]">{m.quantity}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.price)}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.stockValue)}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">-</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${ss.bg}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
                               {m.stockStatus}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500">{m.expiryDate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-[#F8FAFC]">-</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-[#F8FAFC]">-</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.expiryDate}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
                               m.isActive
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-red-50 text-red-700 border-red-200'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/30'
+                                : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700/30'
                             }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${m.isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
                               {m.isActive ? 'Active' : 'Inactive'}
@@ -453,22 +445,22 @@ export default function MedicinesPage() {
                           <td className="px-4 py-3.5 whitespace-nowrap text-right">
                             <div className="relative" ref={dropdownRef}>
                               <button onClick={() => setOpenDropdown(openDropdown === m.id ? null : m.id)}
-                                className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all duration-250"
+                                className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 dark:text-[#64748B] hover:bg-gray-100 dark:hover:bg-[#1F2937] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-all duration-250"
                               ><EllipsisVertical className="w-4 h-4" /></button>
                               {openDropdown === m.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-white rounded-2xl border border-gray-200 w-[200px] z-50 p-2 animate-scaleIn shadow-xl">
+                                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#161B22] rounded-2xl border border-gray-200 dark:border-[#273244] w-[200px] z-50 p-2 animate-scaleIn shadow-xl">
                                   <button onClick={() => { router.push(`/medicines/create?id=${m.id}`); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-250"
+                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
                                   ><Edit className="w-4 h-4" /> Edit</button>
                                   <button onClick={() => { showToast(`Inventory history for ${m.name} is not available`, 'success'); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-250"
+                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
                                   ><Timer className="w-4 h-4" /> Inventory History</button>
                                   <button onClick={() => { setBarcodeTarget(m); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-250"
+                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
                                   ><ScanBarcode className="w-4 h-4" /> Barcode/QR</button>
-                                  <div className="pt-1 mt-1 border-t border-gray-100">
+                                  <div className="pt-1 mt-1 border-t border-gray-100 dark:border-[#273244]">
                                     <button onClick={() => { setDeleteTarget(m); setOpenDropdown(null); }}
-                                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 transition-all duration-250"
+                                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-250"
                                     ><Trash2 className="w-4 h-4" /> Delete</button>
                                   </div>
                                 </div>
@@ -484,33 +476,33 @@ export default function MedicinesPage() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-gray-100">
-              <span className="text-sm text-gray-500">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-gray-100 dark:border-[#273244]">
+              <span className="text-sm text-gray-500 dark:text-[#94A3B8]">
                 Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} entries
               </span>
               <div className="flex items-center gap-1">
                 <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 text-sm hover:bg-gray-50 transition-all duration-250 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] text-sm hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 disabled:opacity-40 disabled:cursor-not-allowed"
                 >&lt;</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                   <button key={p} onClick={() => setCurrentPage(p)}
                     className={`flex items-center justify-center w-8 h-8 rounded-lg text-sm font-medium transition-all duration-250 ${
-                      p === currentPage ? 'bg-[#0F9291] text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                      p === currentPage ? 'bg-[#0F9291] text-white shadow-sm' : 'border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
                     }`}
                   >{p}</button>
                 ))}
                 <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 text-sm hover:bg-gray-50 transition-all duration-250 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] text-sm hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 disabled:opacity-40 disabled:cursor-not-allowed"
                 >&gt;</button>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">Show</span>
+                <span className="text-sm text-gray-500 dark:text-[#94A3B8]">Show</span>
                 <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                  className="h-8 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 px-2 outline-none"
+                  className="h-8 text-sm border border-gray-200 dark:border-[#273244] rounded-lg bg-white dark:bg-[#111827] text-gray-700 dark:text-[#F8FAFC] px-2 outline-none"
                 >
                   {[10, 25, 50, 100].map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
-                <span className="text-sm text-gray-500">entries</span>
+                <span className="text-sm text-gray-500 dark:text-[#94A3B8]">entries</span>
               </div>
             </div>
           </>

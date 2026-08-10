@@ -3,5 +3,9 @@ export default function POSLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <div className="h-screen w-screen overflow-hidden bg-gray-50 dark:bg-[#0a0a0f]">
+      {children}
+    </div>
+  );
 }

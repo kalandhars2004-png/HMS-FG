@@ -7,6 +7,7 @@ import {
   Search, Edit2, Trash2, X, RotateCw, Maximize, Plus, House,
   CheckCircle, XCircle, GitFork,
 } from '@/components/ui/LucideIcon';
+import GlobalModal, { modalInputCls, modalLabelCls } from '@/components/ui/GlobalModal';
 
 export default function VariantsPage() {
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -200,35 +201,29 @@ function VariantModal({ variant, onClose, onSave }: { variant: Variant | null; o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-slideUp" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900 m-0">{variant ? 'Edit Variant' : 'Add Variant'}</h2>
-          <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-all duration-250">
-            <X className="w-4 h-4" />
-          </button>
+    <GlobalModal
+      onClose={onClose}
+      title={variant ? 'Edit Variant' : 'Add Variant'}
+      subtitle="Variants let you sell the same product in different grades, sizes or strengths."
+      icon={<GitFork className="w-5 h-5" />}
+      formId="variant-form"
+    >
+      <form id="variant-form" onSubmit={handleSubmit}>
+        <div className="space-y-5">
+          <div>
+            <label className={modalLabelCls}>Variant Name <span className="text-red-500">*</span></label>
+            <input type="text" required placeholder="e.g. 43 Grade, 12mm Rod" className={modalInputCls} value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+          </div>
+          <div>
+            <label className={modalLabelCls}>Attribute Name <span className="text-red-500">*</span></label>
+            <input type="text" required placeholder="e.g. Grade, Diameter, Size" className={modalInputCls} value={formData.attributeName} onChange={e => setFormData({ ...formData, attributeName: e.target.value })} />
+          </div>
+          <div>
+            <label className={modalLabelCls}>Description</label>
+            <textarea rows={3} placeholder="Brief description..." className={`${modalInputCls} h-auto min-h-[88px] py-3 resize-none`} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+          </div>
         </div>
-        <form onSubmit={handleSubmit} className="p-6">
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Variant Name <span className="text-red-500">*</span></label>
-              <input type="text" required placeholder="e.g. 43 Grade, 12mm Rod" className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Attribute Name <span className="text-red-500">*</span></label>
-              <input type="text" required placeholder="e.g. Grade, Diameter, Size" className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" value={formData.attributeName} onChange={e => setFormData({ ...formData, attributeName: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
-              <textarea rows={3} placeholder="Brief description..." className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250 resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all duration-250">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold text-white bg-[#0F9291] hover:bg-teal-700 rounded-xl transition-all duration-250 shadow-sm hover:shadow-md active:scale-95">{variant ? 'Update Variant' : 'Create Variant'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </GlobalModal>
   );
 }

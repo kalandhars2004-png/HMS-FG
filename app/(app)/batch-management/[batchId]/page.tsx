@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/LucideIcon';
 import { CATEGORY_ICONS } from '@/lib/constants';
 import { ProductsAPI } from '@/lib/api';
+import { formatCurrency } from '@/lib/currency';
 
 interface BatchEntry {
   batchNo: string;
@@ -260,7 +261,6 @@ export default function BatchDetailsPage() {
                   {[
                     { label: 'Product Name', value: product.name, icon: Tag },
                     { label: 'Category', value: cat, icon: Layers },
-                    { label: 'Sub Category', value: cat || '-', icon: Layers },
                     { label: 'Brand', value: '-', icon: Award },
                     { label: 'Unit', value: '-', icon: Ruler },
                     { label: 'SKU', value: product.sku, icon: Barcode },
@@ -392,11 +392,11 @@ export default function BatchDetailsPage() {
             </div>
             <div className="p-6 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
               {[
-                { label: 'Purchase Cost (per unit)', value: `₹${product.price}` },
-                { label: 'Selling Price (per unit)', value: `₹${Math.round(product.price * 1.15)}` },
+                { label: 'Purchase Cost (per unit)', value: `${formatCurrency(product.price)}` },
+                { label: 'Selling Price (per unit)', value: `${formatCurrency(Math.round(product.price * 1.15))}` },
                 { label: 'Discount', value: '5%' },
                 { label: 'Tax (GST)', value: '12%' },
-                { label: 'Total Value', value: `₹${(product.price * totalReceived).toLocaleString()}` },
+                { label: 'Total Value', value: `${formatCurrency(product.price * totalReceived)}` },
                 { label: 'Purchase Invoice', value: 'INV-2026-0891' },
                 { label: 'Purchase Date', value: primaryBatch.purchaseDate },
               ].map((f, i) => (
@@ -664,7 +664,7 @@ export default function BatchDetailsPage() {
                 { label: 'Active', value: activeCount, color: '#10B981' },
                 { label: 'Near Expiry', value: nearCount, color: '#F97316' },
                 { label: 'Expired', value: expiredCount, color: '#EF4444' },
-                { label: 'Total Stock Value', value: `₹${(product.price * totalAvailable).toLocaleString()}`, color: '#6366F1' },
+                { label: 'Total Stock Value', value: `${formatCurrency(product.price * totalAvailable)}`, color: '#6366F1' },
               ].map((stat, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-500">{stat.label}</span>

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Plus, Search, RefreshCw, Eye, Edit, Trash2, X, User, House, RotateCw, Maximize,
+  Plus, Search, RefreshCw, Eye, Edit, Trash2, User, House, RotateCw, Maximize,
   CheckCircle, XCircle, Warehouse as WarehouseIcon,
 } from '@/components/ui/LucideIcon';
 import { WarehousesAPI } from '@/lib/api';
+import GlobalModal from '@/components/ui/GlobalModal';
 
 interface Warehouse {
   id: string;
@@ -292,77 +293,79 @@ export default function WarehousesPage() {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slideUp" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-              <h2 className="text-lg font-bold text-gray-900 m-0">{editId ? 'Edit Warehouse' : 'Add Warehouse'}</h2>
-              <button onClick={() => setShowAddModal(false)} className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-all duration-250">
-                <X className="w-4 h-4" />
-              </button>
+        <GlobalModal
+          onClose={() => setShowAddModal(false)}
+          title={editId ? 'Edit Warehouse' : 'Add Warehouse'}
+          subtitle="Warehouses track physical storage locations across your business."
+          icon={<WarehouseIcon className="w-5 h-5" />}
+          cancelLabel="Cancel"
+          submitLabel={editId ? 'Update Warehouse' : 'Add Warehouse'}
+          onSubmit={handleSave}
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 dark:bg-[#232323] dark:text-gray-300 dark:hover:bg-[#2A2A2A] rounded-xl transition-all duration-250">Cancel</button>
+              <button onClick={handleSave} className="px-5 py-2.5 text-sm font-semibold text-white bg-[#0F9291] hover:bg-teal-700 rounded-xl transition-all duration-250 shadow-sm hover:shadow-md active:scale-95">{editId ? 'Update Warehouse' : 'Add Warehouse'}</button>
             </div>
-            <div className="p-6 space-y-5">
+          }
+        >
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Warehouse Name <span className="text-red-500">*</span></label>
+              <input type="text" value={form.warehouseName} onChange={e => setForm({ ...form, warehouseName: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter warehouse name" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Contact Person <span className="text-red-500">*</span></label>
+              <input type="text" value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter contact person name" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email <span className="text-red-500">*</span></label>
+              <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter email" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Warehouse Name <span className="text-red-500">*</span></label>
-                <input type="text" value={form.warehouseName} onChange={e => setForm({ ...form, warehouseName: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter warehouse name" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Contact Person <span className="text-red-500">*</span></label>
-                <input type="text" value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter contact person name" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
-                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter email" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
-                  <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter phone" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone (Work)</label>
-                  <input type="tel" value={form.phoneWork} onChange={e => setForm({ ...form, phoneWork: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter work phone" />
-                </div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Phone <span className="text-red-500">*</span></label>
+                <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter phone" />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Address <span className="text-red-500">*</span></label>
-                <textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250 resize-none" placeholder="Enter address" />
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Phone (Work)</label>
+                <input type="tel" value={form.phoneWork} onChange={e => setForm({ ...form, phoneWork: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter work phone" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">City <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter city" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">State <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter state" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Country <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter country" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Postal Code <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter postal code" />
-                </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Address <span className="text-red-500">*</span></label>
+              <textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250 resize-none" placeholder="Enter address" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">City <span className="text-red-500">*</span></label>
+                <input type="text" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter city" />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-                <div className="flex items-center">
-                  <button type="button" onClick={() => setForm({ ...form, warehouseStatus: !form.warehouseStatus })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-250 ${form.warehouseStatus ? 'bg-[#0F9291]' : 'bg-gray-300'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-250 ${form.warehouseStatus ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                  <span className="text-sm text-gray-600 ml-3">{form.warehouseStatus ? 'Active' : 'Inactive'}</span>
-                </div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">State <span className="text-red-500">*</span></label>
+                <input type="text" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter state" />
               </div>
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
-                <button onClick={() => setShowAddModal(false)} className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all duration-250">Cancel</button>
-                <button onClick={handleSave} className="px-5 py-2.5 text-sm font-semibold text-white bg-[#0F9291] hover:bg-teal-700 rounded-xl transition-all duration-250 shadow-sm hover:shadow-md active:scale-95">{editId ? 'Update Warehouse' : 'Add Warehouse'}</button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Country <span className="text-red-500">*</span></label>
+                <input type="text" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter country" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Postal Code <span className="text-red-500">*</span></label>
+                <input type="text" value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all duration-250" placeholder="Enter postal code" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
+              <div className="flex items-center">
+                <button type="button" onClick={() => setForm({ ...form, warehouseStatus: !form.warehouseStatus })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-250 ${form.warehouseStatus ? 'bg-[#0F9291]' : 'bg-gray-300'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-250 ${form.warehouseStatus ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+                <span className="text-sm text-gray-600 ml-3">{form.warehouseStatus ? 'Active' : 'Inactive'}</span>
               </div>
             </div>
           </div>
-        </div>
+        </GlobalModal>
       )}
     </div>
   );

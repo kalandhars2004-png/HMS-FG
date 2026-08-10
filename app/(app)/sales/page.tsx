@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Eye, Edit, Trash2, FileText, Sheet, RotateCw, Calendar, X, Plus, Minus, DollarSign, CreditCard, MoreVertical, CheckCircle2, AlertTriangle } from '@/components/ui/LucideIcon';
+import { Search, Eye, Edit, Trash2, FileText, Sheet, RotateCw, X, Plus, Minus, DollarSign, CreditCard, MoreVertical, CheckCircle2, AlertTriangle } from '@/components/ui/LucideIcon';
 import { TransactionsAPI } from '@/lib/api';
+import GlobalModal from '@/components/ui/GlobalModal';
+import { formatCurrency } from '@/lib/currency';
 
 interface Product {
   name: string;
@@ -339,13 +341,13 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-gray-900">₹{sale.grandTotal.toFixed(0)}</span>
+                        <span className="text-sm font-medium text-gray-900">{formatCurrency(sale.grandTotal)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900">₹{sale.paid.toFixed(0)}</span>
+                        <span className="text-sm text-gray-900">{formatCurrency(sale.paid)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900">₹{sale.due.toFixed(2)}</span>
+                        <span className="text-sm text-gray-900">{formatCurrency(sale.due)}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(sale.paymentStatus)}`}>
@@ -411,147 +413,131 @@ export default function SalesPage() {
 
       {/* Add Sales Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-5xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Add Sales</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="border rounded-lg overflow-hidden">
+        <GlobalModal
+          onClose={() => setShowAddModal(false)}
+          title="Add Sales"
+          icon={<Plus className="w-5 h-5" />}
+          size="xl"
+          submitLabel="Submit"
+        >
+          <div className="space-y-4">
+              <div className="border rounded-lg overflow-hidden dark:border-[#2A2A2A]">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-100">
+                  <thead className="bg-gray-100 dark:bg-[#1E1E1E]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Qty</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Purchase Price(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Discount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax(%)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax Amount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Unit Cost(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Cost(%)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Product</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Qty</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Purchase Price(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Discount(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax(%)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax Amount(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Unit Cost(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Total Cost(%)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No products added</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No products added</td></tr>
                   </tbody>
                 </table>
               </div>
               <div className="grid grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Customer Name <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg">
                     <option>Carl Evans</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
-                  <input type="date" defaultValue="2023-01-19" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date <span className="text-red-500">*</span></label>
+                  <input type="date" defaultValue="2023-01-19" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Supplier <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg">
                     <option>Apex Computers</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Product Name <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="Please type product code and select" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Name <span className="text-red-500">*</span></label>
+                  <input type="text" placeholder="Please type product code and select" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
               </div>
               <div className="grid grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Order Tax <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Order Tax <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Discount <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Discount <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Shipping <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Shipping <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg">
                     <option>Completed</option>
                     <option>Pending</option>
                   </select>
                 </div>
               </div>
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between"><span className="text-gray-600">Order Tax</span><span className="font-medium">₹ 0.00</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Discount</span><span className="font-medium">₹ 0.00</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className="font-medium">₹ 0.00</span></div>
-                <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>₹5200.00</span></div>
+              <div className="border-t dark:border-[#2A2A2A] pt-4 space-y-2">
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Order Tax</span><span className="font-medium">{formatCurrency(0)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Discount</span><span className="font-medium">{formatCurrency(0)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Shipping</span><span className="font-medium">{formatCurrency(0)}</span></div>
+                <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>{formatCurrency(5200)}</span></div>
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Cancel</button>
-                <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">Submit</button>
               </div>
-            </div>
-          </div>
-        </div>
+        </GlobalModal>
       )}
 
       {/* Sale Detail Modal */}
       {showDetailModal && selectedSale && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-6xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Sales Detail</h2>
-              <div className="flex gap-2">
-                <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                  <FileText className="w-5 h-5 text-red-500" />
-                </button>
-                <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                  <FileText className="w-5 h-5 text-gray-600" />
-                </button>
-                <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 flex items-center gap-2">
-                  ← Back to Sales
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
+        <GlobalModal
+          onClose={() => setShowDetailModal(false)}
+          title="Sales Detail"
+          icon={<Eye className="w-5 h-5" />}
+          size="xl"
+          hideFooter
+        >
               <div className="grid grid-cols-3 gap-6 mb-6">
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Customer Info</h3>
-                  <h4 className="font-semibold text-gray-900">{selectedSale.customer.name}</h4>
-                  <p className="text-sm text-gray-600">{selectedSale.customer.address}</p>
-                  <p className="text-sm text-gray-600">Email{selectedSale.customer.email}</p>
-                  <p className="text-sm text-gray-600">Phone{selectedSale.customer.phone}</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Customer Info</h3>
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100">{selectedSale.customer.name}</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedSale.customer.address}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Email{selectedSale.customer.email}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Phone{selectedSale.customer.phone}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Company Info</h3>
-                  <h4 className="font-semibold text-gray-900">{selectedSale.company.name}</h4>
-                  <p className="text-sm text-gray-600">{selectedSale.company.address}</p>
-                  <p className="text-sm text-gray-600">Email{selectedSale.company.email}</p>
-                  <p className="text-sm text-gray-600">Phone{selectedSale.company.phone}</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Company Info</h3>
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100">{selectedSale.company.name}</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedSale.company.address}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Email{selectedSale.company.email}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Phone{selectedSale.company.phone}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Invoice Info</h3>
-                  <p className="text-sm"><span className="text-gray-600">Reference:</span> <span className="text-orange-500">#{selectedSale.reference}</span></p>
-                  <p className="text-sm"><span className="text-gray-600">Reference:</span> {selectedSale.date}</p>
-                  <p className="text-sm"><span className="text-gray-600">Status:</span> <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusBadge(selectedSale.status)}`}>{selectedSale.status}</span></p>
-                  <p className="text-sm"><span className="text-gray-600">Payment Status:</span> <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getPaymentStatusBadge(selectedSale.paymentStatus)}`}>• {selectedSale.paymentStatus}</span></p>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Invoice Info</h3>
+                  <p className="text-sm"><span className="text-gray-600 dark:text-gray-400">Reference:</span> <span className="text-orange-500">#{selectedSale.reference}</span></p>
+                  <p className="text-sm"><span className="text-gray-600 dark:text-gray-400">Reference:</span> {selectedSale.date}</p>
+                  <p className="text-sm"><span className="text-gray-600 dark:text-gray-400">Status:</span> <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusBadge(selectedSale.status)}`}>{selectedSale.status}</span></p>
+                  <p className="text-sm"><span className="text-gray-600 dark:text-gray-400">Payment Status:</span> <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getPaymentStatusBadge(selectedSale.paymentStatus)}`}>• {selectedSale.paymentStatus}</span></p>
                 </div>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Order Summary</h3>
-                <div className="border rounded-lg overflow-hidden">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Order Summary</h3>
+                <div className="border rounded-lg overflow-hidden dark:border-[#2A2A2A]">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-[#1E1E1E]">
                       <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Purchase Price(₹)</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Discount(₹)</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax(%)</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax Amount(₹)</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Unit Cost(₹)</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Cost(%)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Product</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Purchase Price(₹)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Discount(₹)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax(%)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax Amount(₹)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Unit Cost(₹)</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Total Cost(%)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -574,42 +560,39 @@ export default function SalesPage() {
                 </div>
                 <div className="mt-4 flex justify-end">
                   <div className="w-64 space-y-2">
-                    <div className="flex justify-between"><span className="text-gray-600">Order Tax</span><span>₹ {selectedSale.orderTax.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Discount</span><span>₹ {selectedSale.discount.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>₹ {selectedSale.grandTotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-lg font-semibold"><span>Paid</span><span>₹ {selectedSale.paid.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-lg font-semibold"><span>Due</span><span>₹ {selectedSale.due.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Order Tax</span><span>{formatCurrency(selectedSale.orderTax)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Discount</span><span>{formatCurrency(selectedSale.discount)}</span></div>
+                    <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>{formatCurrency(selectedSale.grandTotal)}</span></div>
+                    <div className="flex justify-between text-lg font-semibold"><span>Paid</span><span>{formatCurrency(selectedSale.paid)}</span></div>
+                    <div className="flex justify-between text-lg font-semibold"><span>Due</span><span>{formatCurrency(selectedSale.due)}</span></div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
+        </GlobalModal>
       )}
 
       {/* Edit Sale Modal */}
       {showEditModal && selectedSale && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-5xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Edit Sales</h2>
-              <button onClick={() => setShowEditModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="border rounded-lg overflow-hidden">
+        <GlobalModal
+          onClose={() => setShowEditModal(false)}
+          title="Edit Sales"
+          icon={<Edit className="w-5 h-5" />}
+          size="xl"
+          submitLabel="Submit"
+        >
+          <div className="space-y-4">
+              <div className="border rounded-lg overflow-hidden dark:border-[#2A2A2A]">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-100">
+                  <thead className="bg-gray-100 dark:bg-[#1E1E1E]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Qty</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Purchase Price(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Discount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax(%)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax Amount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Unit Cost(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Cost(%)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Product</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Qty</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Purchase Price(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Discount(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax(%)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax Amount(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Unit Cost(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Total Cost(%)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -621,9 +604,9 @@ export default function SalesPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <button className="p-1 border rounded"><Plus className="w-3 h-3" /></button>
+                            <button className="p-1 border rounded dark:border-[#2A2A2A]"><Plus className="w-3 h-3" /></button>
                             <span>{product.qty}</span>
-                            <button className="p-1 border rounded"><Minus className="w-3 h-3" /></button>
+                            <button className="p-1 border rounded dark:border-[#2A2A2A]"><Minus className="w-3 h-3" /></button>
                           </div>
                         </td>
                         <td className="px-4 py-3">{product.purchasePrice}</td>
@@ -639,82 +622,75 @@ export default function SalesPage() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={selectedSale.customer.name}>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Customer Name <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" defaultValue={selectedSale.customer.name}>
                     <option>{selectedSale.customer.name}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
-                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date <span className="text-red-500">*</span></label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Supplier <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={selectedSale.supplier}>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" defaultValue={selectedSale.supplier}>
                     <option>{selectedSale.supplier}</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Product Name <span className="text-red-500">*</span></label>
-                <input type="text" placeholder="Please type product code and select" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Name <span className="text-red-500">*</span></label>
+                <input type="text" placeholder="Please type product code and select" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
               </div>
               <div className="grid grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Order Tax <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue={selectedSale.orderTax} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Order Tax <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue={selectedSale.orderTax} className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Discount <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue={selectedSale.discount} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Discount <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue={selectedSale.discount} className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Shipping <span className="text-red-500">*</span></label>
-                  <input type="number" defaultValue={selectedSale.shipping} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Shipping <span className="text-red-500">*</span></label>
+                  <input type="number" defaultValue={selectedSale.shipping} className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status <span className="text-red-500">*</span></label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={selectedSale.status}>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status <span className="text-red-500">*</span></label>
+                  <select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg" defaultValue={selectedSale.status}>
                     <option>Completed</option>
                     <option>Pending</option>
                     <option>Ordered</option>
                   </select>
                 </div>
               </div>
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between"><span className="text-gray-600">Order Tax</span><span className="font-medium">₹ {selectedSale.orderTax.toFixed(2)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Discount</span><span className="font-medium">₹ {selectedSale.discount.toFixed(2)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className="font-medium">₹ {selectedSale.shipping.toFixed(2)}</span></div>
-                <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>₹{selectedSale.grandTotal.toFixed(2)}</span></div>
+              <div className="border-t dark:border-[#2A2A2A] pt-4 space-y-2">
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Order Tax</span><span className="font-medium">{formatCurrency(selectedSale.orderTax)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Discount</span><span className="font-medium">{formatCurrency(selectedSale.discount)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Shipping</span><span className="font-medium">{formatCurrency(selectedSale.shipping)}</span></div>
+                <div className="flex justify-between text-lg font-semibold"><span>Grand Total</span><span>{formatCurrency(selectedSale.grandTotal)}</span></div>
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setShowEditModal(false)} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Cancel</button>
-                <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">Submit</button>
               </div>
-            </div>
-          </div>
-        </div>
+        </GlobalModal>
       )}
 
       {/* Show Payments Modal */}
       {showPaymentsModal && selectedSale && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-semibold">Show Payments</h2>
-              <button onClick={() => setShowPaymentsModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="border rounded-lg overflow-hidden">
+        <GlobalModal
+          onClose={() => setShowPaymentsModal(false)}
+          title="Show Payments"
+          icon={<DollarSign className="w-5 h-5" />}
+          size="lg"
+          hideFooter
+        >
+              <div className="border rounded-lg overflow-hidden dark:border-[#2A2A2A]">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-[#1E1E1E]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Reference</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Amount</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Paid By</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Reference</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Amount</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Paid By</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -723,21 +699,19 @@ export default function SalesPage() {
                         <tr key={idx}>
                           <td className="px-4 py-3">{payment.date}</td>
                           <td className="px-4 py-3">{payment.reference}</td>
-                          <td className="px-4 py-3">₹{payment.amount}</td>
+                          <td className="px-4 py-3">{formatCurrency(payment.amount)}</td>
                           <td className="px-4 py-3">{payment.paidBy}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No payments recorded</td>
+                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No payments recorded</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        </div>
+        </GlobalModal>
       )}
     </div>
   );

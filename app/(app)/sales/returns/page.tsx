@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Search, Edit, Trash2, FileText, Sheet, RotateCw, X, Plus, CheckCircle2, AlertTriangle } from '@/components/ui/LucideIcon';
 import { TransactionsAPI } from '@/lib/api';
+import GlobalModal from '@/components/ui/GlobalModal';
+import { formatCurrency } from '@/lib/currency';
 
 interface SalesReturn {
   id: string;
@@ -276,14 +278,14 @@ export default function SalesReturnPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-gray-900">₹{ret.total}</span>
+                        <span className="text-sm font-medium text-gray-900">{formatCurrency(ret.total)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900">₹{ret.paid}</span>
+                        <span className="text-sm text-gray-900">{formatCurrency(ret.paid)}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`text-sm font-medium ${ret.due > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                          ₹{ret.due.toFixed(2)}
+                          {formatCurrency(ret.due)}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -336,21 +338,20 @@ export default function SalesReturnPage() {
 
       {/* Add Sales Return Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Add Sales Return</h2>
-              <button onClick={() => setShowModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
+        <GlobalModal
+          onClose={() => setShowModal(false)}
+          title="Add Sales Return"
+          icon={<Plus className="w-5 h-5" />}
+          size="xl"
+          submitLabel="Submit"
+        >
+          <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Customer Name <span className="text-red-500">*</span>
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
                     <option>Select Customer</option>
                     <option>Carl Evans</option>
                     <option>Minerva Rameriz</option>
@@ -358,52 +359,52 @@ export default function SalesReturnPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Date <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
                     defaultValue="2022-11-19"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Reference <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     placeholder="Enter reference"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                   Product <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   placeholder="Please type product code and select"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Status <span className="text-red-500">*</span>
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
                     <option>Select Status</option>
                     <option>Received</option>
                     <option>Pending</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Payment Status <span className="text-red-500">*</span>
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
                     <option>Select Payment Status</option>
                     <option>Paid</option>
                     <option>Unpaid</option>
@@ -411,96 +412,83 @@ export default function SalesReturnPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900"
-                >
-                  Cancel
-                </button>
-                <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
-                  Submit
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
+        </GlobalModal>
       )}
 
       {/* Edit Sales Return Modal */}
       {showEditModal && selectedReturn && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-6xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Edit Sales Return</h2>
-              <button onClick={() => setShowEditModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
+        <GlobalModal
+          onClose={() => setShowEditModal(false)}
+          title="Edit Sales Return"
+          icon={<Edit className="w-5 h-5" />}
+          size="xl"
+          submitLabel="Submit"
+        >
+          <div className="space-y-4">
               {/* Top Form Fields */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Customer Name <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
-                    <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
                       <option>Thomas</option>
                       <option>{selectedReturn.customer.name}</option>
                     </select>
-                    <button className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">
+                    <button className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 dark:bg-[#232323] dark:hover:bg-[#2A2A2A]">
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Date <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
                     defaultValue="2022-11-19"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Reference <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     defaultValue="555444"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
               </div>
 
               {/* Product Search */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                   Product <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   placeholder="Please type product code and select"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                 />
               </div>
 
               {/* Product Table */}
               <div className="border rounded-lg overflow-hidden">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-[#1E1E1E]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Product Name</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Net Unit Price(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Stock</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">QTY</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Discount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Tax %</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Subtotal (₹)</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Actions</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Product Name</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Net Unit Price(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Stock</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">QTY</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Discount(₹)</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax %</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Subtotal (₹)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -554,22 +542,22 @@ export default function SalesReturnPage() {
 
               {/* Summary Section */}
               <div className="flex justify-end">
-                <div className="w-96 space-y-2 bg-gray-50 p-4 rounded-lg">
+                <div className="w-96 space-y-2 bg-gray-50 p-4 rounded-lg dark:bg-[#1E1E1E]">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Order Tax</span>
-                    <span className="font-medium">₹ 0.00</span>
+                    <span className="text-gray-600 dark:text-gray-400">Order Tax</span>
+                    <span className="font-medium">{formatCurrency(0)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Discount</span>
-                    <span className="font-medium">₹ 0.00</span>
+                    <span className="text-gray-600 dark:text-gray-400">Discount</span>
+                    <span className="font-medium">{formatCurrency(0)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Shipping</span>
-                    <span className="font-medium">₹ 0.00</span>
+                    <span className="text-gray-600 dark:text-gray-400">Shipping</span>
+                    <span className="font-medium">{formatCurrency(0)}</span>
                   </div>
                   <div className="flex justify-between text-base font-semibold border-t pt-2">
                     <span>Grand Total</span>
-                    <span>₹ 0.00</span>
+                    <span>{formatCurrency(0)}</span>
                   </div>
                 </div>
               </div>
@@ -577,62 +565,48 @@ export default function SalesReturnPage() {
               {/* Bottom Form Fields */}
               <div className="grid grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Order Tax <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Discount <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Shipping <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     Status <span className="text-red-500">*</span>
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
                     <option>Select</option>
                     <option>Received</option>
                     <option>Pending</option>
                   </select>
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900"
-                >
-                  Cancel
-                </button>
-                <button className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
-                  Submit
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
+        </GlobalModal>
       )}
     </div>
   );

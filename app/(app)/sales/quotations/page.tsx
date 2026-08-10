@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Eye, Edit, Trash2, FileText, Sheet, RotateCw, X } from '@/components/ui/LucideIcon';
+import { Search, Eye, Edit, Trash2, FileText, Sheet, RotateCw, Plus } from '@/components/ui/LucideIcon';
+import GlobalModal from '@/components/ui/GlobalModal';
 
 export default function QuotationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,49 +85,46 @@ export default function QuotationsPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b bg-blue-600">
-              <h2 className="text-xl font-semibold text-white">Add Quotation</h2>
-              <button onClick={() => setShowModal(false)} className="text-white bg-red-500 hover:bg-red-600 rounded-full p-1"><X className="w-5 h-5" /></button>
+        <GlobalModal
+          onClose={() => setShowModal(false)}
+          title="Add Quotation"
+          icon={<Plus className="w-5 h-5" />}
+          size="xl"
+          cancelLabel="Cancel"
+          submitLabel="Submit"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Customer Name <span className="text-red-500">*</span></label><select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg"><option>Carl Evans</option></select></div>
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date <span className="text-red-500">*</span></label><input type="date" defaultValue="2025-12-06" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reference <span className="text-red-500">*</span></label><input type="text" defaultValue="admin" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Customer Name <span className="text-red-500">*</span></label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg"><option>Carl Evans</option></select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Date <span className="text-red-500">*</span></label><input type="date" defaultValue="2025-12-06" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Reference <span className="text-red-500">*</span></label><input type="text" defaultValue="admin" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-2">Product <span className="text-red-500">*</span></label><input type="text" placeholder="shi" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Product</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Qty</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Purchase Price($)</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Discount($)</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Tax(%)</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Tax Amount($)</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Unit Cost($)</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Total Cost(%)</th>
-                    </tr>
-                  </thead>
-                  <tbody><tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No products added</td></tr></tbody>
-                </table>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Order Tax <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Discount <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Shipping <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-2">Status <span className="text-red-500">*</span></label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg"><option>Select</option></select></div>
-              </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setShowModal(false)} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Cancel</button>
-                <button className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">Submit</button>
-              </div>
+            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product <span className="text-red-500">*</span></label><input type="text" placeholder="shi" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
+            <div className="border rounded-lg overflow-hidden dark:border-[#2A2A2A]">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-[#1A2232]">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Product</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Qty</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Purchase Price($)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Discount($)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Tax(%)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Tax Amount($)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Unit Cost($)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Total Cost(%)</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No products added</td></tr></tbody>
+              </table>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Order Tax <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Discount <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Shipping <span className="text-red-500">*</span></label><input type="number" defaultValue="0" className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status <span className="text-red-500">*</span></label><select className="w-full px-3 py-2 border border-gray-300 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] dark:text-[#F8FAFC] rounded-lg"><option>Select</option></select></div>
             </div>
           </div>
-        </div>
+        </GlobalModal>
       )}
     </div>
   );

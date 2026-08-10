@@ -14,8 +14,6 @@ export interface Product {
   slug?: string;
   categoryId?: string;
   category?: Category;
-  subCategoryId?: string;
-  subCategory?: SubCategory;
   brandId?: string;
   brand?: Brand;
   unitId?: string;
@@ -56,18 +54,6 @@ export interface Category {
   createdAt?: string;
 }
 
-export interface SubCategory {
-  id: string;
-  name: string;
-  categoryId: string;
-  category?: Category;
-  categoryCode: string;
-  description?: string;
-  image?: string;
-  status: boolean;
-  createdAt?: string;
-}
-
 export interface Brand {
   id: string;
   name: string;
@@ -81,9 +67,32 @@ export interface Unit {
   id: string;
   name: string;
   shortName: string;
+  pluralName?: string;
+  symbol?: string;
   description?: string;
+  category?: string;
+  unitType?: string;
+  measurementSystem?: string;
+  baseUnit?: string;
+  conversionValue?: number | string;
+  conversionRate?: number | string;
+  decimalPlaces?: number;
+  displayFormat?: string;
+  applicableFor?: string;
+  isDefault?: boolean;
+  usesPurchases?: boolean;
+  usesSales?: boolean;
+  usesInventory?: boolean;
+  usesManufacturing?: boolean;
+  usesPrescriptions?: boolean;
+  usesReports?: boolean;
+  usesBarcodePrinting?: boolean;
+  archived?: boolean;
+  usageCount?: number;
+  createdBy?: string;
   status: boolean;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Variant {
@@ -91,5 +100,20 @@ export interface Variant {
   name: string;
   attributeName: string;
   description?: string;
+  createdAt?: string;
+}
+
+export interface Rack {
+  id: string;
+  code: string;
+  category: string;
+  rowsCount: number;
+  columns: number;
+  bins: number;
+  alertThreshold: number;
+  temperature?: string;
+  status?: string;
+  assignedMedicines?: number;
+  capacityPercent?: number;
   createdAt?: string;
 }

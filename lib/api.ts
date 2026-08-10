@@ -54,7 +54,10 @@ export class ApiClient {
   }
 
   static put<T>(endpoint: string, data: any): Promise<T> {
-    return this.request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) });
+    const body = data instanceof FormData ? data : JSON.stringify(data);
+    const headers: Record<string, string> = {};
+    if (!(data instanceof FormData)) headers['Content-Type'] = 'application/json';
+    return this.request<T>(endpoint, { method: 'PUT', body, headers });
   }
 
   static delete<T>(endpoint: string): Promise<T> {
@@ -99,21 +102,6 @@ export const CategoriesAPI = {
   delete: (id: string) => ApiClient.delete(`/categories/delete/${id}`),
 };
 
-// ---- Sub Categories ----
-export const SubCategoriesAPI = {
-  getAll: async () => {
-    const res = await ApiClient.get<ApiResponse>('/sub-categories/all');
-    return { data: extractList(res, 'subCategories') };
-  },
-  getById: async (id: string) => {
-    const res = await ApiClient.get<ApiResponse>(`/sub-categories/${id}`);
-    return extractSingle(res, 'subCategory');
-  },
-  create: (data: any) => ApiClient.post('/sub-categories/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/sub-categories/update/${id}`, data),
-  delete: (id: string) => ApiClient.delete(`/sub-categories/delete/${id}`),
-};
-
 // ---- Brands ----
 export const BrandsAPI = {
   getAll: async () => {
@@ -134,6 +122,23 @@ export const UnitsAPI = {
   getAll: async () => {
     const res = await ApiClient.get<ApiResponse>('/units/all');
     return { data: extractList(res, 'units') };
+  },
+  filter: async (params: Record<string, string | number | boolean | string[] | undefined>) => {
+    const qs = Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+      .map(([k, v]) => {
+        if (Array.isArray(v)) return `${encodeURIComponent(k)}=${encodeURIComponent(v.join(','))}`;
+        return `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`;
+      })
+      .join('&');
+    const res = await ApiClient.get<ApiResponse>(`/units${qs ? `?${qs}` : ''}`);
+    return {
+      data: extractList(res, 'units'),
+      totalElements: res.totalElements ?? res.data?.totalElements ?? 0,
+      totalPages: res.totalPages ?? 1,
+      currentPage: res.currentPage ?? 1,
+      pageSize: res.pageSize ?? 20,
+    };
   },
   getById: async (id: string) => {
     const res = await ApiClient.get<ApiResponse>(`/units/${id}`);
@@ -173,7 +178,7 @@ export const ProductsAPI = {
   update: (id: string, data: any) => {
     if (data instanceof FormData) {
       data.append('productId', id);
-      return ApiClient.post('/products/update', data);
+      return ApiClient.put('/products/update', data);
     }
     return ApiClient.put('/products/update', { ...data, productId: id });
   },
@@ -201,9 +206,28 @@ export const WarehousesAPI = {
     const res = await ApiClient.get<ApiResponse>('/warehouses/all');
     return { data: extractList(res, 'warehouses') };
   },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/warehouses/${id}`);
+    return extractSingle(res, 'warehouse');
+  },
   create: (data: any) => ApiClient.post('/warehouses/add', data),
   update: (id: string, data: any) => ApiClient.put(`/warehouses/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/warehouses/delete/${id}`),
+};
+
+// ---- Racks ----
+export const RacksAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/racks/all');
+    return { data: extractList(res, 'racks') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/racks/${id}`);
+    return extractSingle(res, 'rack');
+  },
+  create: (data: any) => ApiClient.post('/racks/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/racks/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/racks/delete/${id}`),
 };
 
 // ---- Equipment ----
@@ -233,7 +257,139 @@ export const UsersAPI = {
 };
 interface UserResponse { id: number; name: string; email: string; role: string; phoneNumber?: string; }
 
-// ---- Transactions ----
+// ---- Stock Transfers ----
+export const StockTransfersAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/stock-transfers/all');
+    return { data: extractList(res, 'stockTransfers') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/stock-transfers/${id}`);
+    return extractSingle(res, 'stockTransfer');
+  },
+  create: (data: any) => ApiClient.post('/stock-transfers/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/stock-transfers/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/stock-transfers/delete/${id}`),
+};
+
+// ---- Stock Adjustments ----
+export const StockAdjustmentsAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/stock-adjustments/all');
+    return { data: extractList(res, 'stockAdjustments') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/stock-adjustments/${id}`);
+    return extractSingle(res, 'stockAdjustment');
+  },
+  create: (data: any) => ApiClient.post('/stock-adjustments/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/stock-adjustments/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/stock-adjustments/delete/${id}`),
+};
+
+// ---- Purchase Returns ----
+export const PurchaseReturnsAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/purchase-returns/all');
+    return { data: extractList(res, 'purchaseReturns') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/purchase-returns/${id}`);
+    return extractSingle(res, 'purchaseReturn');
+  },
+  create: (data: any) => ApiClient.post('/purchase-returns/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/purchase-returns/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/purchase-returns/delete/${id}`),
+};
+
+// ---- Batches ----
+export const BatchesAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/batches/all');
+    return { data: extractList(res, 'batches') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/batches/${id}`);
+    return extractSingle(res, 'batch');
+  },
+  create: (data: any) => ApiClient.post('/batches/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/batches/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/batches/delete/${id}`),
+  getExpiringBefore: async (date: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/batches/expiring-before?date=${date}`);
+    return { data: extractList(res, 'batches') };
+  },
+};
+// ---- Sales Orders ----
+export const InvoicesAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/invoices/all');
+    return { data: extractList(res, 'invoices') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/invoices/${id}`);
+    return extractSingle(res, 'invoice');
+  },
+  create: (data: any) => ApiClient.post('/invoices/add', data),
+  generateFromSO: (soId: string) => ApiClient.post(`/invoices/from-so/${soId}`, {}),
+  updateStatus: (id: string, status: string) => ApiClient.put(`/invoices/status/${id}`, { status }),
+  delete: (id: string) => ApiClient.delete(`/invoices/delete/${id}`),
+};
+
+export const SalesOrdersAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/sales-orders/all');
+    return { data: extractList(res, 'salesOrders') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/sales-orders/${id}`);
+    return extractSingle(res, 'salesOrder');
+  },
+  create: (data: any) => ApiClient.post('/sales-orders/add', data),
+  updateStatus: (id: string, status: string) => ApiClient.put(`/sales-orders/status/${id}`, { status }),
+  updatePayment: (id: string, paymentStatus: string) => ApiClient.put(`/sales-orders/payment/${id}`, { paymentStatus }),
+  delete: (id: string) => ApiClient.delete(`/sales-orders/delete/${id}`),
+};
+
+// ---- Stock Counts (Cycle Counting) ----
+export const StockCountsAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/stock-counts/all');
+    return { data: extractList(res, 'stockCounts') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/stock-counts/${id}`);
+    return extractSingle(res, 'stockCount');
+  },
+  create: (data: any) => ApiClient.post('/stock-counts/add', data),
+  updateStatus: (id: string, status: string) => ApiClient.put(`/stock-counts/status/${id}`, { status }),
+  updateItemCount: (countId: string, itemId: string, data: { actualQuantity: number }) =>
+    ApiClient.put(`/stock-counts/${countId}/items/${itemId}`, data),
+  completeCount: (countId: string) => ApiClient.post(`/stock-counts/${countId}/complete`, {}),
+  delete: (id: string) => ApiClient.delete(`/stock-counts/delete/${id}`),
+};
+
+export const ReorderAPI = {
+  setPoint: (data: any) => ApiClient.post('/reorder/points/add', data),
+  getPoints: async () => {
+    const res = await ApiClient.get<ApiResponse>('/reorder/points');
+    return { data: extractList(res, 'reorderPoints') };
+  },
+  getPoint: async (productId: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/reorder/points/${productId}`);
+    return extractSingle(res, 'reorderPoint');
+  },
+  getNeedsReorder: async () => {
+    const res = await ApiClient.get<ApiResponse>('/reorder/needs-reorder');
+    return { data: extractList(res, 'reorderPoints') };
+  },
+  getForecast: async () => {
+    const res = await ApiClient.get<ApiResponse>('/reorder/forecast');
+    return { data: extractList(res, 'forecastResults') };
+  },
+  deletePoint: (id: string) => ApiClient.delete(`/reorder/points/${id}`),
+};
+
 export const TransactionsAPI = {
   getAll: async () => {
     const res = await ApiClient.get<ApiResponse>('/transactions/all');
@@ -251,4 +407,45 @@ export const TransactionsAPI = {
   sell: (data: any) => ApiClient.post('/transactions/sell', data),
   returnToSupplier: (data: any) => ApiClient.post('/transactions/return', data),
   updateStatus: (id: string, status: string) => ApiClient.put(`/transactions/update/${id}`, { status }),
+};
+
+export const POSAPI = {
+  openSession: async (data: any) => {
+    const res = await ApiClient.post<ApiResponse>('/pos/sessions/open', data);
+    return extractSingle(res, 'posSession');
+  },
+  closeSession: (id: string, closingBalance: number) =>
+    ApiClient.put(`/pos/sessions/${id}/close`, { closingBalance }),
+  getActiveSession: async () => {
+    const res = await ApiClient.get<ApiResponse>('/pos/sessions/active');
+    return extractSingle(res, 'posSession');
+  },
+  getSessions: async () => {
+    const res = await ApiClient.get<ApiResponse>('/pos/sessions');
+    return { data: extractList(res, 'posSessions') };
+  },
+  addTransaction: (sessionId: string, data: any) =>
+    ApiClient.post(`/pos/sessions/${sessionId}/transaction`, data),
+  getTransactions: async (sessionId: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/pos/sessions/${sessionId}/transactions`);
+    return { data: extractList(res, 'posTransactions') };
+  },
+  voidTransaction: (id: string) => ApiClient.put(`/pos/transactions/${id}/void`, {}),
+  getDailySales: async () => {
+    const res = await ApiClient.get<ApiResponse>('/pos/daily-sales');
+    return res.data;
+  },
+};
+
+export const AuditAPI = {
+  getAll: async (params?: { entityType?: string; entityId?: string }) => {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    const res = await ApiClient.get<ApiResponse>(`/audit/all${query}`);
+    return { data: extractList(res, 'auditLogs') };
+  },
+  getByEntityType: async (entityType: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/audit/type/${entityType}`);
+    return { data: extractList(res, 'auditLogs') };
+  },
+  cleanOldLogs: (days: number) => ApiClient.delete(`/audit/clean?days=${days}`),
 };

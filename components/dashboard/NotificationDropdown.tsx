@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, Package, AlertTriangle, Clock, Ban, ShoppingCart, TrendingUp, CheckCheck } from '@/components/ui/LucideIcon';
+import { formatCurrency } from '@/lib/currency';
 
 interface Notification {
   id: string;
@@ -74,7 +75,7 @@ export default function NotificationDropdown({ products, transactions }: Notific
         iconBg: t.transactionType === 'PURCHASE' ? '#EAF0FF' : '#FFF6ED',
         iconBorder: t.transactionType === 'PURCHASE' ? '#C2D2FF' : '#FFCFA5',
         title: t.transactionType === 'PURCHASE' ? 'Purchase Completed' : 'Sale Completed',
-        description: `#INV-${String(t.id).padStart(4, '0')} — ₹${Number(t.totalPrice || 0).toLocaleString()}`,
+        description: `#INV-${String(t.id).padStart(4, '0')} — ${formatCurrency(t.totalPrice || 0)}`,
         time: t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'Recently',
         href: '/sales/invoices',
         category: t.transactionType === 'PURCHASE' ? 'purchase' : 'sales',

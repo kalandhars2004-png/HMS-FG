@@ -6,9 +6,10 @@ import { CategoriesAPI } from '@/lib/api';
 import {
   Search, Plus, RotateCw, Maximize, X, Edit2, Trash2,
   ChevronDown, ChevronUp, Download, Printer, FileSpreadsheet,
-  FolderOpen, CheckCircle, XCircle, AlertTriangle, Loader2,
-  Columns, House,
+  FolderOpen, CheckCircle, XCircle, AlertTriangle,
+  Columns, House, FolderTree,
 } from '@/components/ui/LucideIcon';
+import GlobalModal, { modalInputCls, modalSelectCls, modalLabelCls, modalHintCls, GlobalConfirmModal } from '@/components/ui/GlobalModal';
 
 interface ToastItem { id: string; type: 'success' | 'error'; message: string; }
 
@@ -589,74 +590,76 @@ function CategoryModal({
     }
   };
 
-  const inputCls = "w-full px-3.5 py-2.5 text-sm rounded-xl border focus:outline-none focus:shadow-[0_0_0_3px_rgba(15,146,145,0.1)] transition-all duration-250";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-slideUp" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900 m-0">{category ? 'Edit Category' : 'Add Category'}</h2>
-          <button onClick={onClose} disabled={saving} className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all duration-250"><X className="w-4 h-4" /></button>
+    <GlobalModal
+      onClose={onClose}
+      title={category ? 'Edit Category' : 'Add Category'}
+      subtitle="Organize medicines into logical groups."
+      icon={<FolderTree className="w-5 h-5" />}
+      size="lg"
+      scrollable={false}
+      formId="category-form"
+      submitting={saving}
+      onSubmit={() => {}}
+      submitLabel={category ? 'Update Category' : 'Create Category'}
+    >
+      <form id="category-form" onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={modalLabelCls}>Name <span className="text-red-500">*</span></label>
+            <input type="text" required placeholder="e.g. Tablet" className={modalInputCls} value={formData.name} onChange={e => handleNameChange(e.target.value)} />
+            {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+          </div>
+          <div>
+            <label className={modalLabelCls}>Code</label>
+            <input type="text" placeholder="Auto-generated" className={modalInputCls} value={formData.slug} onChange={e => setFormData({ ...formData, slug: e.target.value })} />
+            <p className={modalHintCls}>Auto-generated from name if left blank</p>
+          </div>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Name <span className="text-red-500">*</span></label>
-              <input type="text" required placeholder="e.g. Tablet" className={`${inputCls} ${errors.name ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-[#0F9291]'}`} value={formData.name} onChange={e => handleNameChange(e.target.value)} />
-              {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Code</label>
-              <input type="text" placeholder="Auto-generated" className={`${inputCls} border-gray-200 focus:border-[#0F9291]`} value={formData.slug} onChange={e => setFormData({ ...formData, slug: e.target.value })} />
-              <p className="text-xs text-gray-400 mt-1">Auto-generated from name if left blank</p>
-            </div>
-          </div>
+        <div>
+          <label className={modalLabelCls}>Description</label>
+          <textarea rows={2} placeholder="Brief description..." className={`${modalInputCls} h-auto min-h-[64px] py-3 resize-none`} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
-            <textarea rows={2} placeholder="Brief description..." className={`${inputCls} border-gray-200 focus:border-[#0F9291] resize-none`} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Icon</label>
-              <input type="text" placeholder="📁" className={`${inputCls} border-gray-200 focus:border-[#0F9291] text-center text-lg`} value={formData.icon} onChange={e => setFormData({ ...formData, icon: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Color (hex)</label>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg border border-gray-200 shrink-0" style={{ backgroundColor: formData.color || '#6b7280' }} />
-                <input type="text" placeholder="#0F9291" className={`${inputCls} border-gray-200 focus:border-[#0F9291]`} value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} />
+            <label className={modalLabelCls}>Icon</label>
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-14 rounded-xl border border-gray-200 dark:border-[#2A2A2A] shrink-0 flex items-center justify-center text-lg bg-white dark:bg-[#171717]">
+                {formData.icon || <span className="text-gray-300">–</span>}
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Display Order</label>
-              <input type="number" min="0" step="1" className={`${inputCls} border-gray-200 focus:border-[#0F9291]`} value={formData.displayOrder} onChange={e => setFormData({ ...formData, displayOrder: parseInt(e.target.value) || 0 })} />
+              <input type="text" placeholder="📁" className={modalInputCls} value={formData.icon} onChange={e => setFormData({ ...formData, icon: e.target.value })} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Parent Category</label>
-            <select value={formData.parentId} onChange={e => setFormData({ ...formData, parentId: e.target.value })} className={`${inputCls} border-gray-200 focus:border-[#0F9291] appearance-none cursor-pointer`}>
-              <option value="">None (Top Level)</option>
-              {parentOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-            <div className="flex items-center">
-              <button type="button" onClick={() => setFormData({ ...formData, status: !formData.status })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-250 ${formData.status ? 'bg-[#0F9291]' : 'bg-gray-300'}`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-250 ${formData.status ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-              <span className="text-sm text-gray-600 ml-3">{formData.status ? 'Active' : 'Inactive'}</span>
+            <label className={modalLabelCls}>Color (hex)</label>
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-14 rounded-xl border border-gray-200 dark:border-[#2A2A2A] shrink-0" style={{ backgroundColor: formData.color || '#6b7280' }} />
+              <input type="text" placeholder="#0F9291" className={modalInputCls} value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} />
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-            <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all duration-250">Cancel</button>
-            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-[#0F9291] hover:bg-teal-700 rounded-xl transition-all duration-250 shadow-sm hover:shadow-md active:scale-95">
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {category ? 'Update Category' : 'Create Category'}
-            </button>
+          <div>
+            <label className={modalLabelCls}>Display Order</label>
+            <input type="number" min="0" step="1" className={modalInputCls} value={formData.displayOrder} onChange={e => setFormData({ ...formData, displayOrder: parseInt(e.target.value) || 0 })} />
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+        <div>
+          <label className={modalLabelCls}>Parent Category</label>
+          <select value={formData.parentId} onChange={e => setFormData({ ...formData, parentId: e.target.value })} className={modalSelectCls}>
+            <option value="">None (Top Level)</option>
+            {parentOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 dark:border-white/[0.06] bg-gray-50/80 dark:bg-white/[0.03] px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</p>
+            <p className={modalHintCls}>Inactive categories are hidden from forms and filters.</p>
+          </div>
+          <button type="button" onClick={() => setFormData({ ...formData, status: !formData.status })} className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-250 ${formData.status ? 'bg-[#0F9291]' : 'bg-gray-300 dark:bg-[#2A2A2A]'}`}>
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-250 ${formData.status ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+      </form>
+    </GlobalModal>
   );
 }
 
@@ -676,25 +679,14 @@ function ConfirmModal({
     ? <>Are you sure you want to delete <strong>&ldquo;{deleteTarget.name}&rdquo;</strong>? This action cannot be undone.</>
     : <>{`Are you sure you want to ${bulkAction} ${bulkCount} categor${bulkCount === 1 ? 'y' : 'ies'}?`}{bulkAction === 'delete' && ' This action cannot be undone.'}</>;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => !saving && onCancel()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-slideUp" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900 m-0 flex items-center gap-2">
-            <AlertTriangle className={`w-5 h-5 ${isDelete ? 'text-red-500' : 'text-amber-500'}`} /> {title}
-          </h2>
-          <button onClick={onCancel} disabled={saving} className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all duration-250"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="p-6">
-          <p className="text-sm text-gray-600">{message}</p>
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-            <button onClick={onCancel} disabled={saving} className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all duration-250">Cancel</button>
-            <button onClick={onConfirm} disabled={saving} className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-xl transition-all duration-250 shadow-sm active:scale-95 ${isDelete ? 'bg-red-600 hover:bg-red-700' : 'bg-[#0F9291] hover:bg-teal-700'}`}>
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {deleteTarget ? 'Delete' : bulkAction === 'activate' ? 'Activate' : 'Deactivate'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <GlobalConfirmModal
+      onClose={() => !saving && onCancel()}
+      title={title}
+      message={message}
+      confirmLabel={deleteTarget ? 'Delete' : bulkAction === 'activate' ? 'Activate' : 'Deactivate'}
+      danger={isDelete}
+      submitting={saving}
+      onConfirm={onConfirm}
+    />
   );
 }
