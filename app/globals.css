@@ -223,6 +223,69 @@ h1, h2, h3, h4, h5, h6, .section-title {
 .animate-shake { animation: shake 0.5s ease both; }
 .animate-pulse-slow { animation: pulse-dot 6s ease-in-out infinite; }
 
+/* ===== Post-login welcome choreography ===== */
+
+/* The ring doubles as the countdown: it closes as the dashboard loads. */
+@keyframes welcomeRing {
+  from { stroke-dashoffset: 339.292; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Avatar lands with a little overshoot so it feels sprung, not linear. */
+@keyframes welcomePop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes welcomeRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Slow breathing halo behind the avatar. */
+@keyframes welcomeHalo {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 0.75; transform: scale(1.14); }
+}
+
+/* One soft sweep of light across the name, once. */
+@keyframes welcomeSheen {
+  from { background-position: -180% 0; }
+  to   { background-position: 180% 0; }
+}
+
+/* Ambient motes drifting upward. */
+@keyframes welcomeFloat {
+  0%   { opacity: 0; transform: translateY(18px) scale(0.7); }
+  30%  { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(-56px) scale(1.1); }
+}
+
+.welcome-rise { opacity: 0; animation: welcomeRise 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+.welcome-name {
+  background: linear-gradient(100deg, #FFFFFF 30%, #7FE9E6 50%, #FFFFFF 70%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: welcomeSheen 1500ms ease-out 600ms both;
+}
+
+/* Respect the OS "reduce motion" setting. Vestibular triggers aside, the error
+   shake and the infinite pulses are the worst offenders here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ===== Sidebar utilities ===== */
 .ripple { position: absolute; border-radius: 9999px; background: rgba(15, 146, 145, 0.18); transform: scale(0); animation: ripple-anim 600ms ease-out forwards; pointer-events: none; }
 @keyframes ripple-anim { to { transform: scale(1); opacity: 0; } }

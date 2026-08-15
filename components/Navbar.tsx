@@ -144,8 +144,8 @@ export default function Navbar() {
         {/* LEFT */}
         <div className="flex items-center gap-3">
           <a href="/dashboard" className="flex items-center no-underline">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-[#0F766E] to-[#14B8A6] shadow-sm shadow-teal-500/20">
-              <Pill className="w-5 h-5 text-white" />
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-[#0F766E] to-[#14B8A6] shadow-sm shadow-teal-500/20">
+              <Pill className="w-4 h-4 text-white" />
             </div>
           </a>
 

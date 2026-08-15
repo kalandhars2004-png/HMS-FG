@@ -253,7 +253,12 @@ export const UsersAPI = {
   },
   update: (id: string, data: any) => ApiClient.put(`/users/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/users/delete/${id}`),
-  getCurrent: () => ApiClient.get<UserResponse>('/users/current'),
+  // Returns the standard envelope with a UserDTO under `user`. It used to return the
+  // raw JPA entity — including the password hash — at the top level.
+  getCurrent: async (): Promise<UserResponse> => {
+    const res = await ApiClient.get<ApiResponse>('/users/current');
+    return extractSingle(res, 'user');
+  },
 };
 interface UserResponse { id: number; name: string; email: string; role: string; phoneNumber?: string; }
 
