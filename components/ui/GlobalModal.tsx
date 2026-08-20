@@ -1,5 +1,8 @@
 'use client';
 
+import ModalLayer from '@/components/ui/ModalLayer';
+import { registerModal, unregisterModal } from '@/lib/modal-guard';
+
 import { useEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react';
 import { X, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -123,8 +126,10 @@ onBackdropClose = true,
     if (!open) return () => {};
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
     document.body.style.overflow = 'hidden';
+    registerModal();
     return () => {
       document.body.style.overflow = '';
+      unregisterModal();
       restoreFocusRef.current?.focus?.();
       if (closeTimer.current) clearTimeout(closeTimer.current);
     };
@@ -211,24 +216,14 @@ onBackdropClose = true,
   const panelOpened = open && !closing && shown;
 
   return (
-    <div
-      className={`fixed inset-0 z-[1100] flex p-3 sm:p-6 ${
-        scrollable
-          ? 'items-center justify-center'
-          : 'min-h-full items-start sm:items-center justify-center overflow-y-auto sm:overflow-hidden'
-      }`}
+    <ModalLayer
+      open={open || closing}
+      onClose={() => onBackdropClose && !submitting && closeWithAnimation()}
+      dismissOnBackdrop={!!onBackdropClose && !submitting}
+      dismissOnEscape={!submitting}
       role="dialog"
-      aria-modal="true"
-      aria-label={title}
     >
-      {/* ── Frosted glass overlay (pure white frost, no dark veil) ── */}
-      <div
-        aria-hidden
-        onClick={() => onBackdropClose && !submitting && closeWithAnimation()}
-        className={`absolute inset-0 left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 h-[200vh] w-[200vw] bg-[rgba(255,255,255,0.18)] dark:bg-[rgba(15,23,42,0.28)] transition-[opacity,backdrop-filter] duration-[220ms] ease-out ${
-          overlayOpened ? 'opacity-100 backdrop-blur-[20px]' : 'opacity-0 backdrop-blur-0'
-        }`}
-      />
+
 
       {/* ── Floating panel ── */}
       <div
@@ -308,7 +303,7 @@ onBackdropClose = true,
           </footer>
         )}
       </div>
-    </div>
+    </ModalLayer>
   );
 }
 

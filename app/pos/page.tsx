@@ -1,5 +1,7 @@
 'use client';
 
+import { notifyDataChanged } from '@/lib/boot-cache';
+
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -10,6 +12,7 @@ import {
 } from '@/components/ui/LucideIcon';
 import { ProductsAPI, TransactionsAPI, CategoriesAPI, UsersAPI, POSAPI } from '@/lib/api';
 import GlobalModal from '@/components/ui/GlobalModal';
+import { shouldIgnoreGlobalKey } from '@/lib/modal-guard';
 import { formatCurrency } from '@/lib/currency';
 
 // ─── Types ───
@@ -31,6 +34,16 @@ interface Customer { id?: string; name: string; phone?: string; email?: string; 
 
 function formatTime(d: Date) { return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 function formatDate(d: Date) { return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+// Real-world rule: expired stock must never be sellable at the counter.
+// Expired products are hidden from the grid, rejected by barcode lookup and
+// blocked from being added to the cart entirely.
+function isExpired(expiryDate?: string): boolean {
+  if (!expiryDate) return false;
+  const exp = new Date(expiryDate);
+  if (isNaN(exp.getTime())) return false;
+  return exp.getTime() < Date.now();
+}
 
 export default function POSPage() {
   // ─── Data ───
@@ -112,7 +125,7 @@ export default function POSPage() {
         prescriptionRequired: p.prescriptionRequired || false, sku: p.sku || '',
         categoryName: p.categoryName || p.category?.name || 'General', imageUrl: p.imageUrl || '',
         lowStockQuantity: p.lowStockQuantity || 10, manufacturer: p.brandName || '',
-      }));
+      })).filter((p: any) => !isExpired(p.expiryDate));
       setProducts(mapped);
       const cats = Array.from(new Set(mapped.map((p: any) => p.categoryName).filter(Boolean))) as string[];
       setCategories(cats);
@@ -147,6 +160,7 @@ export default function POSPage() {
   // ─── Keyboard shortcuts ───
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (shouldIgnoreGlobalKey(e)) return;
       if (e.key === 'F1' || (e.ctrlKey && e.key === 'k')) { e.preventDefault(); searchRef.current?.focus(); return; }
       if (e.key === 'F2') { e.preventDefault(); setShowCustomerModal(true); return; }
       if (e.key === 'F3') { e.preventDefault(); setShowSearchModal(true); return; }
@@ -155,8 +169,6 @@ export default function POSPage() {
       if (e.key === 'Escape') { setShowSearchModal(false); setShowCustomerModal(false); setShowPaymentModal(false); setBarcodeMode(false); return; }
       if (e.ctrlKey && e.key === 'b') { e.preventDefault(); setBarcodeMode(true); setTimeout(() => barcodeRef.current?.focus(), 100); return; }
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         e.preventDefault();
         searchRef.current?.focus();
         setSearchQuery(prev => prev + e.key);
@@ -170,6 +182,7 @@ export default function POSPage() {
   const TAX_RATE = 0.05;
 
   const addToCart = useCallback((product: POSProduct) => {
+    if (isExpired(product.expiryDate)) { showToast(`${product.name} is expired and cannot be sold`, 'error'); return; }
     if (product.stockQuantity <= 0) { showToast('Out of stock', 'warning'); return; }
     setCart(prev => {
       const existing = prev.find(i => i.productId === product.id);
@@ -247,7 +260,7 @@ export default function POSPage() {
   }, [cart, customer, lastReceipt, subtotal, totalDiscount, totalTax, grandTotal, paymentMethod]);
 
   const filteredProducts = useMemo(() => {
-    let f = products.filter(p => p.stockQuantity > 0);
+    let f = products.filter(p => p.stockQuantity > 0 && !isExpired(p.expiryDate));
     if (selectedCategory !== 'all') f = f.filter(p => p.categoryName === selectedCategory);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -262,7 +275,10 @@ export default function POSPage() {
   const handleBarcode = useCallback((val: string) => {
     if (!val.trim()) return;
     const found = products.find(p => p.sku === val.trim());
-    if (found) { addToCart(found); showToast(`${found.name} added`, 'success'); }
+    if (found) {
+      if (isExpired(found.expiryDate)) { showToast(`${found.name} is expired and cannot be sold`, 'error'); }
+      else { addToCart(found); showToast(`${found.name} added`, 'success'); }
+    }
     else { showToast('Product not found', 'error'); }
     if (barcodeRef.current) barcodeRef.current.value = '';
   }, [products, addToCart, showToast]);
@@ -288,6 +304,9 @@ export default function POSPage() {
       setShowSuccessModal(true);
       setCart([]);
       loadProducts();
+      // Stock and revenue just changed — tell the dashboard so it refetches
+      // instead of showing pre-sale figures when the user navigates back.
+      notifyDataChanged();
       showToast('Sale completed!', 'success');
     } catch { showToast('Failed to complete sale', 'error'); }
   };
@@ -890,7 +909,7 @@ export default function POSPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Received Amount</label>
-              <input type="number" placeholder="0.00" value={receivedAmt} onChange={e => setReceivedAmt(e.target.value)} autoFocus
+              <input type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={receivedAmt} onChange={e => setReceivedAmt(e.target.value)} autoFocus
                 className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-xl text-sm focus:outline-none focus:border-[#0F9D8A] focus:shadow-[0_0_0_3px_rgba(15,157,138,0.1)]" />
               {Number(receivedAmt) > 0 && <p className="text-xs text-gray-500 mt-1.5">Balance: <strong className={balance >= 0 ? 'text-emerald-600' : 'text-red-500'}>{formatCurrency(balance)}</strong></p>}
             </div>

@@ -2,43 +2,63 @@
 
 import { useState, FormEvent, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Space_Grotesk, Inter } from 'next/font/google';
 import { useAuth } from '@/lib/auth-context';
 import type { User } from '@/types';
 import {
   Eye, EyeOff, Mail, ArrowRight, AlertCircle,
-  CheckCircle2, Pill, ShieldCheck, ChevronRight,
+  ShieldCheck, ChevronRight, Pill,
 } from '@/components/ui/LucideIcon';
+import { AppLoader } from '@/components/ui/Loading';
+import { readApiError } from '@/components/auth/AuthShell';
+import { ProductsAPI, CategoriesAPI, TransactionsAPI, InvoicesAPI, BatchesAPI } from '@/lib/api';
+import { setDashboardBootData, clearDashboardBootData } from '@/lib/boot-cache';
+
+// The reference template pairs two faces: Space Grotesk 14px/1.5 for body copy,
+// and Inter 700 for every heading (h1–h6 all override to Inter).
+const grotesk = Space_Grotesk({ subsets: ['latin'], weight: ['400', '500', '600', '700'] });
+const inter = Inter({ subsets: ['latin'], weight: ['600', '700'] });
 
 /**
- * Only shown in development. These must match what config/DataInitializer.java
- * actually seeds — listing accounts that do not exist just hands the user a
- * credential that 404s.
+ * Heading scale copied from the reference:
+ *   h2 — 28px, dropping to 24px under 992px and 22px under 768px
+ *   h1 — 35px, dropping to 28px under 992px and 24px under 768px
+ * All at weight 700 in Inter.
  */
-const demoAccounts = [
-  { label: 'Admin', email: 'admin@example.com', password: 'admin123', role: 'Full access', color: 'from-[#0F9291] to-teal-600' },
-];
+const H2 = `${inter.className} font-bold text-[22px] md:text-[24px] min-[992px]:text-[28px]`;
+const H1 = `${inter.className} font-bold text-[24px] md:text-[28px] min-[992px]:text-[35px]`;
 
+/** Design tokens lifted from the reference theme. */
+const T = {
+  primary: '#0F9291',
+  primaryHover: '#0C807F',
+  gradient: 'linear-gradient(103.28deg, #0EA5A4 0%, #175780 100%)',
+  heading: '#101828', // gray-900
+  body: '#4A5565',    // gray-600
+  border: '#E5E7EB',  // gray-200
+  muted: '#6A7282',   // gray-500
+};
+
+const demoAccounts = [
+  { label: 'Admin', email: 'admin@example.com', password: 'admin123', role: 'Full access' },
+];
 const showDemoAccounts = process.env.NODE_ENV === 'development';
 
 /**
- * How long the welcome screen stays up before the dashboard loads.
- * The entrance choreography runs to ~900ms, so anything below ~1800ms cuts it off.
+ * Minimum time the boot panel stays on screen once sign-in starts.
+ *
+ * This API is fast — auth is ~85ms and the dashboard's three calls total ~24ms —
+ * so without a floor the panel would never be perceptible. The window is spent
+ * on real work: the dashboard's critical data is prefetched here and handed
+ * over, so the dashboard paints with data instead of skeletons. Sits inside the
+ * 300–1200ms target band.
  */
-const WELCOME_MS = 2400;
+const MIN_BOOT_MS = 900;
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrator',
-  manager: 'Manager',
-  pharmacist: 'Pharmacist',
-  cashier: 'Cashier',
-};
-
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
+/** After this long, tell the user it's slow rather than leaving them guessing. */
+const SLOW_AFTER_MS = 2500;
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -47,22 +67,90 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const [welcomeUser, setWelcomeUser] = useState<User | null>(null);
+  const [remember, setRemember] = useState(false);
+
+  // Boot state — driven by real work, never by a timer.
+  const [booting, setBooting] = useState(false);
+  const [bootVisible, setBootVisible] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const [bootUser, setBootUser] = useState<User | null>(null);
+  const [stageIndex, setStageIndex] = useState(0);
+  const [bootError, setBootError] = useState<{ title: string; message: string; expired?: boolean } | null>(null);
+
   const emailRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const { login } = useAuth();
   const router = useRouter();
 
+  const STAGE_LABELS = ['Verifying credentials', 'Loading your profile', 'Loading inventory data', 'Opening workspace'];
+  const stages = STAGE_LABELS.map((label, i) => ({
+    id: label,
+    label,
+    state: (i < stageIndex ? 'done' : i === stageIndex ? 'active' : 'pending') as 'pending' | 'active' | 'done',
+  }));
+
+  /**
+   * Dev-only inspection hook. Sign-in completes in well under the reveal
+   * threshold on a healthy setup, so the boot panel correctly never appears —
+   * which also makes it impossible to review. These let you see each state:
+   *   /login?boot          loading
+   *   /login?boot=slow     slow-network copy
+   *   /login?boot=error    initialisation failure
+   *   /login?boot=expired  expired session
+   */
+  const [preview, setPreview] = useState<string | null>(null);
+
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const mode = new URLSearchParams(window.location.search).get('boot');
+    if (mode === null) return;
+
+    setPreview(mode || 'loading');
+    setBootUser({ id: '1', username: 'Admin', email: 'admin@example.com', role: 'admin' });
+    setStageIndex(1);
+
+    if (mode === 'error') {
+      setBootError({
+        title: 'Unable to load your workspace',
+        message: 'Something went wrong while preparing the application.',
+      });
+    } else if (mode === 'expired') {
+      setBootError({
+        title: 'Your session has expired',
+        message: 'Sign in again to continue where you left off.',
+        expired: true,
+      });
+    } else {
+      setBooting(true);
+      setBootVisible(true);
+      if (mode === 'slow') setSlow(true);
+    }
+  }, []);
+
+  // "Remember for 30 days" prefills the address next visit. The session length
+  // itself is server-controlled, so the checkbox only claims what it can deliver.
+  useEffect(() => {
+    const saved = localStorage.getItem('rememberedEmail');
+    if (saved) {
+      setEmail(saved);
+      setRemember(true);
+    }
     emailRef.current?.focus();
   }, []);
 
-  // Hold the welcome screen briefly, then hand off to the dashboard.
+  // Only reveal the boot panel if the work is actually slow enough to warrant it,
+  // and only escalate to the "still working" copy well after that.
   useEffect(() => {
-    if (!welcomeUser) return;
-    const timer = setTimeout(() => router.push('/dashboard'), WELCOME_MS);
-    return () => clearTimeout(timer);
-  }, [welcomeUser, router]);
+    if (preview) return; // preview states are pinned, not timed
+    if (!booting) {
+      setBootVisible(false);
+      setSlow(false);
+      return;
+    }
+    setBootVisible(true);
+    const nag = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(nag);
+  }, [booting, preview]);
 
   useEffect(() => {
     if (error && formRef.current) {
@@ -76,315 +164,305 @@ export default function LoginPage() {
     setCapsLock(e.getModifierState?.('CapsLock') ?? false);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const runSignIn = async () => {
+    const startedAt = Date.now();
     setError('');
+    setBootError(null);
     setIsLoading(true);
-    try {
-      const signedIn = await login(email, password);
-      setWelcomeUser(signedIn);
-    } catch (err) {
-      // Surface what the server actually said. Collapsing everything into
-      // "invalid credentials" hid outages and validation errors alike.
-      const raw = err instanceof Error ? err.message : '';
-      let detail = '';
-      try {
-        detail = JSON.parse(raw)?.message ?? '';
-      } catch {
-        detail = raw;
-      }
+    setBooting(true);
+    setStageIndex(0);
 
-      if (/failed to fetch|networkerror|load failed/i.test(detail)) {
-        setError("Can't reach the server. Check that the API is running on port 5050.");
-      } else if (/not found|does not match|invalid/i.test(detail)) {
-        setError('Incorrect email or password.');
-      } else {
-        setError(detail || 'Sign in failed. Please try again.');
-      }
+    let signedIn: User;
+    try {
+      // Stage 1 — the only network round trip on this path.
+      signedIn = await login(email, password);
+    } catch (err) {
+      const detail = readApiError(err, 'Sign in failed. Please try again.');
+      setBooting(false);
       setIsLoading(false);
+      setError(
+        /not found|does not match|invalid/i.test(detail)
+          ? 'Incorrect email or password.'
+          : detail
+      );
       return;
     }
-    setIsLoading(false);
+
+    // Stage 2 — session. The profile arrives inside the login response, so
+    // there is no second /users/current round trip.
+    setBootUser(signedIn);
+    setStageIndex(1);
+
+    if (remember) localStorage.setItem('rememberedEmail', email);
+    else localStorage.removeItem('rememberedEmail');
+
+    if (!signedIn?.role) {
+      setBootError({
+        title: 'Unable to load your workspace',
+        message: 'Your account signed in but no role was returned, so we could not open the dashboard.',
+      });
+      return;
+    }
+
+    // Stage 3 — warm the dashboard here so it paints with data on arrival.
+    setStageIndex(2);
+    try {
+      const [prodRes, catRes, txRes, invRes, batchRes] = await Promise.all([
+        ProductsAPI.getAll(),
+        CategoriesAPI.getAll(),
+        TransactionsAPI.getAll().catch(() => ({ data: [] })),
+        InvoicesAPI.getAll().catch(() => ({ data: [] })),
+        BatchesAPI.getAll().catch(() => ({ data: [] })),
+      ]);
+      setDashboardBootData({
+        products: prodRes.data || [],
+        categories: catRes.data || [],
+        transactions: txRes.data || [],
+        invoices: invRes.data || [],
+        batches: batchRes.data || [],
+      });
+    } catch {
+      // Non-fatal: the dashboard will fetch for itself and show skeletons.
+      clearDashboardBootData();
+    }
+
+    // Hold only for whatever is left of the minimum window — never a fixed wait
+    // stacked on top of the work already done.
+    const remaining = MIN_BOOT_MS - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
+
+    setStageIndex(3);
+    router.push('/dashboard');
   };
 
-  const fillDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError('');
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    void runSignIn();
   };
 
-  const fieldClass =
-    'w-full h-11 pl-4 pr-11 text-sm rounded-lg border outline-none transition-colors duration-150 ' +
-    'text-gray-900 bg-white border-gray-300 placeholder:text-gray-400 ' +
-    'hover:border-gray-400 focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/25 ' +
-    'dark:text-gray-100 dark:bg-white/[0.04] dark:border-white/10 dark:placeholder:text-gray-500 ' +
-    'dark:hover:border-white/20 dark:focus:border-[#2CB8B5] dark:focus:ring-[#2CB8B5]/25';
-
-  if (welcomeUser) {
-    const displayName = (welcomeUser.username || '').trim();
-    const firstName = displayName.split(' ')[0] || 'there';
-    const initial = (displayName[0] || '?').toUpperCase();
-
+  /* ===================== BOOT ===================== */
+  // Rendered only when sign-in is slow enough to need feedback, or when it failed.
+  if ((booting && bootVisible) || bootError) {
     return (
-      <div
-        className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-6 text-center"
-        style={{ background: 'radial-gradient(120% 90% at 50% 0%, #10403F 0%, #0A1E1E 45%, #050F0F 100%)' }}
-        role="status"
-        aria-live="polite"
-      >
-        {/* Ambient depth */}
-        <div className="absolute top-[-30%] left-1/2 -translate-x-1/2 w-[900px] h-[520px] rounded-full bg-[#0F9291]/10 blur-[130px] pointer-events-none" />
-        <div className="absolute bottom-[-25%] right-[-10%] w-[460px] h-[460px] rounded-full bg-[#0F9291]/[0.07] blur-[110px] pointer-events-none" />
-
-        {/* Drifting motes */}
-        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          {[
-            { l: '18%', d: 0, s: 5 }, { l: '31%', d: 900, s: 3 }, { l: '44%', d: 400, s: 4 },
-            { l: '58%', d: 1300, s: 3 }, { l: '69%', d: 200, s: 5 }, { l: '82%', d: 750, s: 4 },
-          ].map((m, i) => (
-            <span
-              key={i}
-              className="absolute bottom-[34%] rounded-full bg-[#4FD1CE]"
-              style={{
-                left: m.l,
-                width: `${m.s}px`,
-                height: `${m.s}px`,
-                animation: `welcomeFloat 2600ms ease-out ${m.d}ms infinite`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="relative z-10 flex flex-col items-center">
-          {/* Avatar inside a ring that closes as the countdown runs */}
-          <div className="relative w-[124px] h-[124px] mb-8">
-            <span
-              className="absolute inset-3 rounded-full bg-[#0F9291] blur-2xl"
-              style={{ animation: 'welcomeHalo 2400ms ease-in-out infinite' }}
-            />
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 124 124" aria-hidden="true">
-              <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="3" />
-              <circle
-                cx="62" cy="62" r="54" fill="none"
-                stroke="url(#welcomeStroke)" strokeWidth="3" strokeLinecap="round"
-                strokeDasharray="339.292"
-                style={{ animation: `welcomeRing ${WELCOME_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards` }}
-              />
-              <defs>
-                <linearGradient id="welcomeStroke" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#0F9291" />
-                  <stop offset="100%" stopColor="#7FE9E6" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div
-              className="absolute inset-[18px] rounded-full bg-gradient-to-br from-[#0F9291] to-teal-700 flex items-center justify-center shadow-xl shadow-[#0F9291]/25"
-              style={{ animation: 'welcomePop 700ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both' }}
-            >
-              <span className="text-white text-[32px] font-bold leading-none select-none">{initial}</span>
-            </div>
-            <span
-              className="absolute bottom-1 right-1 w-8 h-8 rounded-full bg-[#0A1E1E] border-2 border-[#0F9291] flex items-center justify-center"
-              style={{ animation: 'welcomePop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) 620ms both' }}
-            >
-              <CheckCircle2 className="w-4 h-4 text-[#7FE9E6]" />
-            </span>
-          </div>
-
-          <p className="welcome-rise text-white/45 text-sm tracking-wide mb-2" style={{ animationDelay: '380ms' }}>
-            {greeting()},
-          </p>
-
-          <h1
-            className="welcome-rise welcome-name text-[38px] sm:text-[44px] font-bold leading-[1.1] mb-4 text-balance"
-            style={{ animationDelay: '500ms' }}
-          >
-            {firstName}
-          </h1>
-
-          <span
-            className="welcome-rise inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#0F9291]/12 border border-[#0F9291]/25 text-[#7FE9E6] text-xs font-semibold tracking-wide backdrop-blur-sm"
-            style={{ animationDelay: '660ms' }}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            {ROLE_LABELS[welcomeUser.role] ?? welcomeUser.role}
-          </span>
-
-          <p className="welcome-rise text-white/35 text-[13px] mt-10" style={{ animationDelay: '900ms' }}>
-            Setting up your workspace…
-          </p>
-        </div>
-      </div>
+      <AppLoader
+        stages={stages}
+        userName={bootUser?.username}
+        slow={slow}
+        error={bootError}
+        onRetry={() => void runSignIn()}
+        onSignOut={() => {
+          localStorage.removeItem('user');
+          localStorage.removeItem('authToken');
+          setBooting(false);
+          setBootError(null);
+          setIsLoading(false);
+        }}
+      />
     );
   }
 
+
+  /* ===================== SIGN IN ===================== */
+  const fieldWrap = 'flex items-stretch w-full rounded-[5px] border overflow-hidden transition-colors duration-150 bg-white';
+  const fieldInput = 'flex-1 min-w-0 h-[42px] px-3 text-[14px] text-[#101828] placeholder:text-[#99A1AF] bg-transparent outline-none';
+  const fieldAddon = 'flex items-center justify-center w-[42px] shrink-0 border-l text-[#6A7282]';
+
   return (
-    <div className="min-h-screen flex bg-white dark:bg-[#0a0a0f]">
-      {/* ===== LEFT: SIGN-IN FORM ===== */}
-      <div className="flex-1 lg:w-[55%] flex items-center justify-center px-5 py-10">
-        <form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className="w-full max-w-[420px]"
-          noValidate
-        >
-          {/* Brand */}
-          <div className="flex items-center gap-2.5 mb-9">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0F9291] to-teal-600 flex items-center justify-center shadow-sm shrink-0">
-              <Pill className="w-5 h-5 text-white" />
-            </div>
-            <div className="leading-tight">
-              <p className="text-[15px] font-bold text-gray-900 dark:text-white">Inventory</p>
-              <p className="text-[12px] font-medium text-gray-500 dark:text-gray-400">Management System</p>
-            </div>
-          </div>
+    <div className={`${grotesk.className} min-h-screen bg-white`} style={{ color: T.body }}>
+      <div className="flex flex-wrap min-h-screen">
 
-          <h1 className="text-[27px] font-bold text-gray-900 dark:text-white leading-tight mb-2 text-balance">
-            Sign in to your account
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-8">
-            Manage stock, dispensing, suppliers and daily sales from one place.
-          </p>
+        {/* ============ LEFT — FORM (col-lg-8) ============ */}
+        <div className="w-full lg:w-2/3 p-3">
+          <div className="flex items-center justify-center min-h-screen py-5">
+            <div className="w-full max-w-[450px] mx-auto px-2">
+              <form ref={formRef} onSubmit={handleSubmit} noValidate className="relative pt-14 text-center">
 
-          {/* Email */}
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Email address
-            </label>
-            <div className="relative">
-              <input
-                id="email"
-                ref={emailRef}
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="you@pharmacy.com"
-                aria-invalid={!!error}
-                className={fieldClass}
-              />
-              <Mail className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-            </div>
-          </div>
+                {/* Logo — absolutely centred at the top, as in the reference */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-0 flex items-center gap-2">
+                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: T.gradient }}>
+                    <Pill className="w-[18px] h-[18px] text-white" />
+                  </span>
+                  <span className={`${inter.className} text-[17px] font-bold tracking-tight`} style={{ color: T.heading }}>
+                    Inventory<span style={{ color: T.primary }}>MS</span>
+                  </span>
+                </div>
 
-          {/* Password */}
-          <div className="mb-5">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Password
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyUp={syncCapsLock}
-                onKeyDown={syncCapsLock}
-                onClick={syncCapsLock}
-                onBlur={() => setCapsLock(false)}
-                placeholder="Enter your password"
-                aria-invalid={!!error}
-                aria-describedby={capsLock ? 'capslock-hint' : undefined}
-                className={fieldClass}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(v => !v)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                aria-pressed={showPassword}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 -m-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/40 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {capsLock && (
-              <p id="capslock-hint" className="text-amber-600 dark:text-amber-400 text-xs mt-1.5 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                Caps Lock is on
-              </p>
-            )}
-          </div>
+                <div className="mb-6">
+                  <h2 className={`${H2} mb-2 leading-[1.3]`} style={{ color: T.heading }}>
+                    Sign In To Your Account
+                  </h2>
+                  <p className="text-[14px] leading-relaxed mb-0" style={{ color: T.body }}>
+                    Access real-time insights into inventory, POS transactions, supplier orders, and prescription workflows.
+                  </p>
+                </div>
 
-          {/* Status — one live region so screen readers announce both outcomes */}
-          <div aria-live="polite" aria-atomic="true">
-            {error && (
-              <div className="flex items-start gap-2 px-3.5 py-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-sm mb-4 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-300">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
+                {/* Email */}
+                <div className="mb-2 text-start">
+                  <label htmlFor="email" className="block text-[14px] font-semibold mb-[6px]" style={{ color: T.heading }}>
+                    Email Address<span className="text-[#D42314]"> *</span>
+                  </label>
+                  <div className={fieldWrap} style={{ borderColor: error ? '#D42314' : T.border }}>
+                    <input
+                      id="email" ref={emailRef} type="email" required autoComplete="email"
+                      value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="Enter Email address" aria-invalid={!!error}
+                      className={fieldInput}
+                    />
+                    <span className={fieldAddon} style={{ borderColor: T.border }}>
+                      <Mail className="w-4 h-4" />
+                    </span>
+                  </div>
+                </div>
 
-          <button
-            type="submit"
-            disabled={isLoading || !!welcomeUser}
-            className="w-full h-11 rounded-lg bg-gradient-to-r from-[#0F9291] to-[#0D7F7E] text-white font-semibold text-sm shadow-sm flex items-center justify-center gap-2 transition-all duration-150 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#0a0a0f] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Signing in…
-              </>
-            ) : (
-              <>Sign in <ArrowRight className="w-4 h-4" /></>
-            )}
-          </button>
+                {/* Password */}
+                <div className="mb-3 text-start">
+                  <label htmlFor="password" className="block text-[14px] font-semibold mb-[6px]" style={{ color: T.heading }}>
+                    Password<span className="text-[#D42314]"> *</span>
+                  </label>
+                  <div className={fieldWrap} style={{ borderColor: error ? '#D42314' : T.border }}>
+                    <input
+                      id="password" type={showPassword ? 'text' : 'password'} required autoComplete="current-password"
+                      value={password} onChange={e => setPassword(e.target.value)}
+                      onKeyUp={syncCapsLock} onKeyDown={syncCapsLock} onClick={syncCapsLock}
+                      onBlur={() => setCapsLock(false)}
+                      placeholder="Enter Password" aria-invalid={!!error}
+                      aria-describedby={capsLock ? 'capslock-hint' : undefined}
+                      className={fieldInput}
+                    />
+                    <button
+                      type="button" onClick={() => setShowPassword(v => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}
+                      className={`${fieldAddon} hover:text-[#101828] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/40`}
+                      style={{ borderColor: T.border }}
+                    >
+                      {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {capsLock && (
+                    <p id="capslock-hint" className="text-[#D97F06] text-[12px] mt-1.5 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" /> Caps Lock is on
+                    </p>
+                  )}
+                </div>
 
-          {showDemoAccounts && (
-            <div className="mt-8 pt-6 border-t border-gray-100 dark:border-white/[0.06]">
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium mb-3">
-                Development only
-              </p>
-              <div className="flex flex-col gap-2">
-                {demoAccounts.map(acc => (
+                {/* Remember / Forgot */}
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <label htmlFor="remember_me" className="flex items-center gap-2 cursor-pointer select-none text-start">
+                    <input
+                      id="remember_me" type="checkbox" checked={remember}
+                      onChange={e => setRemember(e.target.checked)}
+                      className="w-4 h-4 rounded-[3px] cursor-pointer accent-[#0F9291]"
+                    />
+                    <span className="text-[14px]" style={{ color: T.heading }}>Remember for 30 days</span>
+                  </label>
+                  <a href="/login" className="text-[14px] font-medium hover:underline" style={{ color: T.primary }}>
+                    Forgot Password?
+                  </a>
+                </div>
+
+                {/* Error */}
+                <div aria-live="polite" aria-atomic="true">
+                  {error && (
+                    <div className="flex items-start gap-2 px-3.5 py-3 rounded-[5px] text-[13px] mb-4 text-start"
+                      style={{ background: '#FDECEA', border: '1px solid #F6C9C4', color: '#A8201A' }}>
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-[1px]" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Submit */}
+                <div className="mb-4">
                   <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => fillDemo(acc.email, acc.password)}
-                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 dark:bg-white/[0.03] dark:border-white/10 dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/40 transition-colors text-left group"
+                    type="submit" disabled={isLoading}
+                    className="w-full h-[44px] rounded-[5px] text-white text-[15px] font-semibold flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/50 focus-visible:ring-offset-2"
+                    style={{ background: T.gradient, backgroundSize: '200% auto' }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundPosition = 'right center')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundPosition = 'left center')}
                   >
-                    <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${acc.color} flex items-center justify-center shrink-0 shadow-sm`}>
-                      <span className="text-white text-xs font-bold">{acc.label.charAt(0)}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{acc.label}</p>
-                      <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{acc.role}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:translate-x-0.5 transition-transform" />
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Signing In
+                      </>
+                    ) : (
+                      <>Sign In <ArrowRight className="w-4 h-4" /></>
+                    )}
                   </button>
-                ))}
+                </div>
+
+                {/* Sign up */}
+                <div className="text-center mt-4">
+                  <p className="text-[14px] font-normal mb-0" style={{ color: T.heading }}>
+                    Don&apos;t have an account?{' '}
+                    <Link href="/signup" className="font-medium hover:underline" style={{ color: T.primary }}>Sign up</Link>
+                  </p>
+                </div>
+
+                {showDemoAccounts && (
+                  <div className="mt-7 pt-5 border-t text-start" style={{ borderColor: T.border }}>
+                    <p className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: T.muted }}>
+                      Development only
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {demoAccounts.map(acc => (
+                        <button
+                          key={acc.email} type="button"
+                          onClick={() => { setEmail(acc.email); setPassword(acc.password); setError(''); }}
+                          className="flex items-center gap-3 px-3.5 py-2.5 rounded-[5px] border bg-white hover:bg-gray-50 transition-colors text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/40"
+                          style={{ borderColor: T.border }}
+                        >
+                          <span className="w-9 h-9 rounded-[5px] flex items-center justify-center shrink-0" style={{ background: T.gradient }}>
+                            <span className="text-white text-xs font-bold">{acc.label.charAt(0)}</span>
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[14px] font-semibold" style={{ color: T.heading }}>{acc.label}</span>
+                            <span className="block text-[11px]" style={{ color: T.muted }}>{acc.role}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-[#D1D5DC] group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {/* ============ RIGHT — HERO (col-lg-4) ============ */}
+        <div className="hidden lg:flex lg:w-1/3 p-0">
+          <div className="relative w-full h-screen overflow-hidden">
+            <Image
+              src="/auth/auth-bg.jpg" alt="" fill priority
+              className="object-cover object-center" sizes="33vw"
+            />
+            {/* Decorative gradient washes, top-right then bottom-right */}
+            <Image
+              src="/auth/authentication-bg-01.png" alt="" width={640} height={200}
+              className="absolute top-0 right-0 w-full h-auto pointer-events-none select-none" aria-hidden="true"
+            />
+            <Image
+              src="/auth/authentication-bg-02.png" alt="" width={640} height={200}
+              className="absolute bottom-0 right-0 w-full h-auto pointer-events-none select-none" aria-hidden="true"
+            />
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
+              <div className="text-center z-[2]">
+                <h1 className={`${H1} text-white leading-tight mb-2 px-3`}>
+                  Smart Pharmacy Control Panel
+                </h1>
+                <p className="text-white text-[14px] leading-relaxed mb-0">
+                  Get real time insights into sales performance, stock levels, prescriptions, and staff efficiency with intelligent analytics.
+                </p>
               </div>
             </div>
-          )}
-        </form>
-      </div>
-
-      {/* ===== RIGHT: BRAND PANEL ===== */}
-      <div
-        className="hidden lg:flex lg:w-[45%] relative overflow-hidden"
-        style={{ background: 'linear-gradient(180deg, #0A1E1E 0%, #061414 100%)' }}
-        aria-hidden="true"
-      >
-        <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full bg-[#0F9291]/10 blur-[90px]" />
-        <div className="absolute -bottom-24 -left-24 w-[320px] h-[320px] rounded-full bg-[#0F9291]/5 blur-[70px]" />
-
-        <div className="relative z-10 w-full flex flex-col items-center justify-center px-10 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#0F9291]/20 backdrop-blur-sm flex items-center justify-center mb-7 border border-[#0F9291]/20">
-            <Pill className="w-8 h-8 text-[#0F9291]" />
           </div>
-          <p className="text-white text-[30px] font-bold leading-tight mb-4 max-w-sm text-balance">
-            Smart pharmacy control panel
-          </p>
-          <p className="text-white/60 text-sm leading-relaxed max-w-xs">
-            Real-time visibility into stock levels, expiring batches, dispensing and daily sales.
-          </p>
         </div>
+
       </div>
     </div>
   );

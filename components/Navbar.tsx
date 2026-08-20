@@ -8,6 +8,7 @@ import {
   Building2, Database, ShoppingCart,
 } from '@/components/ui/LucideIcon';
 import { useTheme } from '@/lib/theme-context';
+import { isAnyModalOpen } from '@/lib/modal-guard';
 
 interface Notification {
   id: string;
@@ -34,7 +35,7 @@ function useOutsideClick(refs: React.RefObject<HTMLElement | null>[], handler: (
 
 function useEscape(handler: () => void) {
   useEffect(() => {
-    const listener = (e: KeyboardEvent) => { if (e.key === 'Escape') handler(); };
+    const listener = (e: KeyboardEvent) => { if (e.key === 'Escape' && !isAnyModalOpen()) handler(); };
     document.addEventListener('keydown', listener);
     return () => document.removeEventListener('keydown', listener);
   }, [handler]);
@@ -58,7 +59,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/stock/cycle-count': 'Cycle Count',
   '/stock/forecast': 'Forecast',
   '/stock/inventory-logs': 'Inventory Logs',
-  '/stock/reorder': 'Reorder Points',
+  '/stock/restock': 'Restock',
   '/stock/transfer': 'Stock Transfer',
   '/purchases': 'Purchases',
   '/purchases/create': 'New Purchase',

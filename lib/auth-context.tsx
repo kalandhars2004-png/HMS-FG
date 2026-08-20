@@ -55,6 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       localStorage.setItem('user', JSON.stringify(backendUser));
       localStorage.setItem('authToken', res.token || '');
+      // Signing in is the definitive start of a session. Clearing here (not just
+      // on logout) means the restock warning still appears when the previous
+      // session ended some other way — token expiry, a 401 redirect, or a crash.
+      sessionStorage.removeItem('ims.stockAlert.seen');
       setUser(backendUser);
       return backendUser;
     } catch (error) {
@@ -66,6 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('authToken');
+    // Per-session UI state must not leak across accounts — the next person to
+    // sign in should get their own restock warning.
+    sessionStorage.removeItem('ims.stockAlert.seen');
     setUser(null);
     router.push('/login');
   };

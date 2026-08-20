@@ -3,19 +3,25 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { RotateCw, AlertTriangle, ShoppingCart } from '@/components/ui/LucideIcon';
-import { ReorderAPI } from '@/lib/api';
+import { ReorderAPI, ProductsAPI } from '@/lib/api';
+import { getStockStatus } from '@/lib/stock-status';
+
+/** Fallback threshold when a product has no lowStockQuantity of its own. */
+const DEFAULT_THRESHOLD = 30;
 
 interface ReorderItem {
   id: number;
   productId: number;
   productName: string;
   currentStock: number;
-  minStockLevel: number;
-  maxStockLevel: number;
+  minStockLevel: number | null;
+  maxStockLevel: number | null;
   reorderPoint: number;
   reorderQuantity: number;
   status: string;
   needsReorder: boolean;
+  sku?: string;
+  configured?: boolean;
 }
 
 export default function ReorderPage() {
@@ -30,10 +36,48 @@ export default function ReorderPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const res = await ReorderAPI.getNeedsReorder();
-      setItems((res as any).data || []);
+
+      // /reorder/needs-reorder walks the reorder_points table and joins to
+      // products, so it returns nothing until someone configures a reorder point
+      // — a product sitting at zero stock would never appear. Drive the list off
+      // actual stock instead, and use any configured point to enrich the row.
+      const [prodRes, pointRes] = await Promise.all([
+        ProductsAPI.getAll(),
+        ReorderAPI.getPoints().catch(() => ({ data: [] })),
+      ]);
+
+      const points = new Map<number, any>(
+        ((pointRes as any).data || []).map((p: any) => [Number(p.productId), p]),
+      );
+
+      const rows: ReorderItem[] = (prodRes.data || [])
+        .map((p: any) => {
+          const stock = Number(p.stockQuantity ?? p.quantity ?? 0);
+          const point = points.get(Number(p.id));
+          const threshold = Number(point?.reorderPoint ?? p.lowStockQuantity ?? DEFAULT_THRESHOLD);
+          return {
+            id: point?.id ?? p.id,
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            currentStock: stock,
+            minStockLevel: point?.minStockLevel ?? null,
+            maxStockLevel: point?.maxStockLevel ?? null,
+            reorderPoint: threshold,
+            // Top back up to the max level when one is configured, else to twice
+            // the threshold, which is the usual default for a simple reorder.
+            reorderQuantity: Number(point?.reorderQuantity ?? ((point?.maxStockLevel ?? threshold * 2) - stock)),
+            status: getStockStatus(stock, threshold).label,
+            needsReorder: stock <= threshold,
+            configured: !!point,
+          } as ReorderItem;
+        })
+        .filter((r: ReorderItem) => r.needsReorder)
+        .sort((a: ReorderItem, b: ReorderItem) => a.currentStock - b.currentStock);
+
+      setItems(rows);
     } catch (err) {
-      console.error('Failed to load reorder items:', err);
+      console.error('Failed to load restock items:', err);
     } finally {
       setIsLoading(false);
     }
@@ -58,8 +102,8 @@ export default function ReorderPage() {
       <div className="max-w-[1600px] mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Reorder Stock</h1>
-            <p className="text-sm text-gray-600 mt-1">Products that need to be reordered</p>
+            <h1 className="text-2xl font-bold text-gray-900">Restock</h1>
+            <p className="text-sm text-gray-600 mt-1">Products at or below their reorder level</p>
           </div>
           <div className="flex gap-3">
             <button onClick={loadData} className="p-2 bg-white rounded-lg border border-gray-200 hover:bg-gray-50">
@@ -70,7 +114,7 @@ export default function ReorderPage() {
                 onClick={handleReorderAll}
                 className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-2 font-medium"
               >
-                <ShoppingCart className="w-5 h-5" /> Reorder All ({items.length})
+                <ShoppingCart className="w-5 h-5" /> Restock All ({items.length})
               </button>
             )}
           </div>
@@ -86,7 +130,7 @@ export default function ReorderPage() {
               </div>
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">All Stock Levels Are Healthy</h2>
-            <p className="text-gray-500">No products need reordering at this time.</p>
+            <p className="text-gray-500">Every product is above its reorder level.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -99,11 +143,15 @@ export default function ReorderPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{item.productName}</h3>
-                      <p className="text-xs text-gray-500">Product #{item.productId}</p>
+                      <p className="text-xs text-gray-500">{item.sku || `Product #${item.productId}`}</p>
                     </div>
                   </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    Low Stock
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStockStatus(item.currentStock, item.reorderPoint).pill}`}>
+                    <span className="status-dot w-1.5 h-1.5 mr-1.5">
+                      <span className={`ring ${getStockStatus(item.currentStock, item.reorderPoint).dot}`} />
+                      <span className={`dot w-1.5 h-1.5 rounded-full ${getStockStatus(item.currentStock, item.reorderPoint).dot}`} />
+                    </span>
+                    {item.status}
                   </span>
                 </div>
 

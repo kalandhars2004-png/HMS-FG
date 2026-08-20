@@ -6,12 +6,15 @@ import { useRouter } from 'next/navigation';
 import { ProductsAPI } from '@/lib/api';
 import { CATEGORY_ICONS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/currency';
+import { getStockStatus, STOCK_STATUS_LABELS, type StockStatusMeta } from '@/lib/stock-status';
 import {
   Search, Edit, Trash2, Timer, ScanBarcode,
   RotateCw, Plus, Maximize, EllipsisVertical,
-  House, X, AlertTriangle, CheckCircle2,
+  House, X, AlertTriangle, CheckCircle2, Pill, Ban, Package as PackageIcon, Calendar, ArrowUpToLine,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
+import DropdownMenu, { DropdownItem, DropdownSeparator } from '@/components/ui/DropdownMenu';
+import MedicineDetailsDialog from '@/components/medicines/MedicineDetailsDialog';
 
 interface MedicineDisplay {
   id: string;
@@ -22,34 +25,42 @@ interface MedicineDisplay {
   quantity: number;
   price: number;
   stockValue: number;
-  stockStatus: 'In Stock' | 'Low Stock' | 'Out of Stock';
+  stockStatus: string;
+  stockMeta: StockStatusMeta;
   expiryDate: string;
-  isActive: boolean;
-}
-
-const STOCK_STATUS_STYLES: Record<string, { dot: string; bg: string }> = {
-  'In Stock': { dot: 'bg-emerald-500', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/30' },
-  'Low Stock': { dot: 'bg-orange-500', bg: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-700/30' },
-  'Out of Stock': { dot: 'bg-red-500', bg: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700/30' },
-};
-
-function getStockStatus(qty: number): 'In Stock' | 'Low Stock' | 'Out of Stock' {
-  if (qty === 0) return 'Out of Stock';
-  if (qty < 30) return 'Low Stock';
-  return 'In Stock';
+  expiryRaw: string | null;
 }
 
 function getStats(medicines: MedicineDisplay[]) {
   const total = medicines.length;
-  const inStock = medicines.filter(m => m.stockStatus === 'In Stock').length;
-  const lowStock = medicines.filter(m => m.stockStatus === 'Low Stock').length;
-  const outOfStock = medicines.filter(m => m.stockStatus === 'Out of Stock').length;
+  const inStock = medicines.filter(m => m.stockMeta.level === 'healthy').length;
+  const lowStock = medicines.filter(m => m.stockMeta.level === 'low').length;
+  const outOfStock = medicines.filter(m => m.stockMeta.level === 'out').length;
+  const critical = medicines.filter(m => m.stockMeta.level === 'critical').length;
+  const pct = (n: number) => (total ? `${Math.round((n / total) * 100)}%` : '0%');
   return [
-    { label: 'Total Medicine', value: total.toLocaleString(), trend: total > 0 ? `+${inStock}` : '0', up: true, icon: '💊' },
-    { label: 'In Stock', value: inStock.toLocaleString(), trend: inStock > 0 ? `+${inStock}` : '0', up: true, icon: '📦' },
-    { label: 'Low Stock', value: lowStock.toLocaleString(), trend: lowStock > 0 ? `${lowStock}` : '0', up: false, icon: '⚠️' },
-    { label: 'Out of Stock', value: outOfStock.toLocaleString(), trend: outOfStock > 0 ? `${outOfStock}` : '0', up: false, icon: '🚫' },
+    // `statuses: []` means "clear the filter" — the Total card is the reset.
+    { label: 'Total Medicine', value: total.toLocaleString(), trend: null, up: true, Icon: Pill, tone: 'text-[#8A38F5] bg-[#8A38F5]/10', statuses: [] as string[] },
+    { label: 'In Stock', value: inStock.toLocaleString(), trend: pct(inStock), up: true, Icon: PackageIcon, tone: 'text-[#0F9291] bg-[#0F9291]/10', statuses: ['In Stock'] },
+    // This card counts low + critical, so selecting it must select both.
+    { label: 'Low Stock', value: (lowStock + critical).toLocaleString(), trend: pct(lowStock + critical), up: false, Icon: AlertTriangle, tone: 'text-[#D97F06] bg-[#D97F06]/10', statuses: ['Low Stock', 'Critical'] },
+    { label: 'Out of Stock', value: outOfStock.toLocaleString(), trend: pct(outOfStock), up: false, Icon: Ban, tone: 'text-[#D42314] bg-[#D42314]/10', statuses: ['Out of Stock'] },
   ];
+}
+
+/** Soft pill hues per dosage form, matching the reference table. */
+const CATEGORY_PILL: Record<string, string> = {
+  tablet: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  capsule: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
+  syrup: 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-300',
+  injection: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
+  ointment: 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300',
+  drops: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300',
+};
+
+function categoryPill(category: string): string {
+  const key = Object.keys(CATEGORY_PILL).find(k => category.toLowerCase().includes(k));
+  return key ? CATEGORY_PILL[key] : 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300';
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -78,10 +89,12 @@ export default function MedicinesPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
   const [showFilter, setShowFilter] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string[]>([]);
   const [filterStockStatus, setFilterStockStatus] = useState<string[]>([]);
   const [barcodeTarget, setBarcodeTarget] = useState<MedicineDisplay | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ show: true, message, type });
@@ -104,9 +117,10 @@ export default function MedicinesPage() {
           quantity: qty,
           price,
           stockValue: price * qty,
-          stockStatus: getStockStatus(qty),
+          stockStatus: getStockStatus(qty, p.lowStockQuantity ?? undefined).label,
+          stockMeta: getStockStatus(qty, p.lowStockQuantity ?? undefined),
           expiryDate: formatDate(p.expiryDate),
-          isActive: true,
+          expiryRaw: p.expiryDate ?? null,
         };
       });
       setMedicines(mapped);
@@ -124,15 +138,6 @@ export default function MedicinesPage() {
     return () => window.removeEventListener('focus', onFocus);
   }, [loadMedicines]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpenDropdown(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   useEffect(() => {
     if (toast.show) {
@@ -149,6 +154,7 @@ export default function MedicinesPage() {
     }
     if (filterCategory.length > 0 && !filterCategory.includes(m.category)) return false;
     if (filterStockStatus.length > 0 && !filterStockStatus.includes(m.stockStatus)) return false;
+    if (filterDate && m.expiryRaw && m.expiryRaw.slice(0, 10) !== filterDate) return false;
     return true;
   });
 
@@ -156,7 +162,22 @@ export default function MedicinesPage() {
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const stats = getStats(filtered);
+  const stats = getStats(medicines);
+
+  /** Exports exactly what the user is looking at — filters and search included. */
+  const exportCsv = () => {
+    const cols = ['SKU', 'Item', 'Generic Name', 'Category', 'Quantity', 'Price', 'Stock Value', 'Stock Status', 'Expiry Date'];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = filtered.map(x => [x.sku, x.name, x.genericName, x.category, x.quantity, x.price, x.stockValue, x.stockStatus, x.expiryDate].map(esc).join(','));
+    const blob = new Blob([[cols.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `medicines-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${filtered.length} medicines`, 'success');
+  };
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -262,25 +283,43 @@ export default function MedicinesPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
-        {stats.map((card, i) => (
-          <div key={i} className="bg-white dark:bg-[#161B22] rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)] p-5 transition-all duration-250 hover:shadow-[0_15px_40px_rgba(15,23,42,0.08)] dark:hover:shadow-[0_15px_40px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 dark:hover:border-[#14B8A6]/20">
+        {stats.map((card, i) => {
+          const active = card.statuses.length === 0
+            ? filterStockStatus.length === 0
+            : card.statuses.length === filterStockStatus.length &&
+              card.statuses.every(x => filterStockStatus.includes(x));
+          return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => { setFilterStockStatus(active && card.statuses.length ? [] : card.statuses); setCurrentPage(1); }}
+            aria-pressed={active}
+            aria-label={`Filter by ${card.label}`}
+            className="text-left w-full bg-white dark:bg-[#161B22] rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)] p-5 transition-all duration-250 hover:shadow-[0_15px_40px_rgba(15,23,42,0.08)] dark:hover:shadow-[0_15px_40px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#0F9291]/50"
+          >
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-500 dark:text-[#94A3B8] m-0 flex items-center gap-2 mb-3">
-                  <span className="text-base">{card.icon}</span> {card.label}
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${card.tone}`}>
+                    <card.Icon className="w-4 h-4" />
+                  </span>
+                  {card.label}
                 </p>
                 <h4 className="text-2xl font-bold text-gray-900 dark:text-[#F8FAFC] m-0 flex items-center gap-2">
                   {card.value}
-                  <span className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-0.5 ${
-                    card.up ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
-                  }`}>
-                    {card.trend}
-                  </span>
+                  {card.trend && (
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-0.5 ${
+                      card.up ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                    }`}>
+                      {card.trend}
+                    </span>
+                  )}
                 </h4>
               </div>
             </div>
-          </div>
-        ))}
+          </button>
+          );
+        })}
       </div>
 
       {/* Main Card */}
@@ -294,6 +333,16 @@ export default function MedicinesPage() {
                 <input type="text" placeholder="Search" value={searchQuery}
                   onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                   className="h-9 text-sm text-gray-900 dark:text-[#F8FAFC] border border-gray-200 dark:border-[#273244] rounded-xl bg-gray-50 dark:bg-[#111827] pl-9 pr-3 w-[180px] outline-none transition-all duration-250 focus:w-[220px] focus:border-[#0F9291] focus:bg-white dark:focus:bg-[#161B22] focus:shadow-[0_0_0_3px_rgba(15,146,145,0.1)] dark:focus:shadow-[0_0_0_3px_rgba(20,184,166,0.15)]"
+                />
+              </div>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#64748B] pointer-events-none" />
+                <input
+                  type="date"
+                  value={filterDate}
+                  onChange={e => { setFilterDate(e.target.value); setCurrentPage(1); }}
+                  aria-label="Filter by expiry date"
+                  className="h-9 text-sm text-gray-900 dark:text-[#F8FAFC] border border-gray-200 dark:border-[#273244] rounded-xl bg-gray-50 dark:bg-[#111827] pl-9 pr-3 w-[170px] outline-none transition-colors duration-200 focus:border-[#0F9291] focus:bg-white dark:focus:bg-[#161B22]"
                 />
               </div>
             </div>
@@ -312,6 +361,12 @@ export default function MedicinesPage() {
               </button>
               <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7h6l3-4 3 4h6l-3 4 3 4h-6l-3 4-3-4H3l3-4-3-4z" /></svg> Sort by
+              </button>
+              <button
+                onClick={exportCsv}
+                className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap"
+              >
+                <ArrowUpToLine className="w-4 h-4" /> Export
               </button>
               <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Export
@@ -344,7 +399,7 @@ export default function MedicinesPage() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider mb-2">Stock Status</p>
                 <div className="flex flex-wrap gap-2">
-                  {['In Stock', 'Low Stock', 'Out of Stock'].map(status => (
+                  {STOCK_STATUS_LABELS.map(status => (
                     <label key={status} className="flex items-center gap-1.5 cursor-pointer">
                       <input type="checkbox" checked={filterStockStatus.includes(status)}
                         onChange={e => {
@@ -381,91 +436,81 @@ export default function MedicinesPage() {
                   <tr className="bg-gray-50/80 dark:bg-[#1A2232] border-b border-gray-100 dark:border-[#273244]">
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">SKU</th>
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Item</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Generic Name</th>
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Category</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Quantity</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Price</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Value</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">HTS Code</th>
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Quantity</th>
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Price</th>
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Value</th>
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Status</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Manufacture</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Supplier</th>
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Expiry Date</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Status</th>
                     <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-[#111827]">
                   {paginated.length === 0 ? (
-                    <tr><td colSpan={14} className="px-4 py-16 text-center text-gray-400 dark:text-[#64748B] text-sm">No medicines found</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-16 text-center text-gray-400 dark:text-[#64748B] text-sm">No medicines found</td></tr>
                   ) : (
                     paginated.map((m) => {
-                      const ss = STOCK_STATUS_STYLES[m.stockStatus];
+                      const ss = m.stockMeta;
                       const icon = CATEGORY_ICONS[m.category] || '📦';
                       return (
-                        <tr key={m.id} className="hover:bg-gray-50/50 dark:hover:bg-[#1F2937]/50 transition-colors duration-250">
+                        <tr
+                          key={m.id}
+                          onClick={() => setDetailsId(m.id)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`View details for ${m.name}`}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsId(m.id); } }}
+                          className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-[#1F2937]/50 transition-colors duration-250 focus:outline-none focus-visible:bg-[#0F9291]/5"
+                        >
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className="text-[#0F9291] text-sm font-medium">{m.sku}</span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
+                          {/* Generic name sits under the item rather than in its own
+                              column — it is derived from the name, so a separate
+                              column repeated most of the same string. */}
+                          <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
-                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-[#1F2937] text-xs">{icon}</span>
-                              <span className="text-sm font-medium text-gray-900 dark:text-[#F8FAFC]">{m.name}</span>
+                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-[#1F2937] text-xs shrink-0">{icon}</span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-gray-900 dark:text-[#F8FAFC] truncate">{m.name}</span>
+                                {m.genericName && m.genericName !== m.name && (
+                                  <span className="block text-xs text-gray-400 dark:text-[#64748B] truncate">{m.genericName}</span>
+                                )}
+                              </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.genericName}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-700/30">
+                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${categoryPill(m.category)}`}>
                               {m.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC]">{m.quantity}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.price)}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.stockValue)}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">-</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC]">{m.quantity}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.price)}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.stockValue)}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${ss.bg}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${ss.pill}`}>
+                              {!ss.needsAttention ? (
+                                <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                              ) : (
+                                /* Only unhealthy stock animates, so the eye is drawn to real problems */
+                                <span className="status-dot w-1.5 h-1.5">
+                                  <span className={`ring ${ss.dot}`} />
+                                  <span className={`dot w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                                </span>
+                              )}
                               {m.stockStatus}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-[#F8FAFC]">-</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-[#F8FAFC]">-</td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.expiryDate}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                              m.isActive
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/30'
-                                : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700/30'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${m.isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                              {m.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-right">
-                            <div className="relative" ref={dropdownRef}>
-                              <button onClick={() => setOpenDropdown(openDropdown === m.id ? null : m.id)}
-                                className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 dark:text-[#64748B] hover:bg-gray-100 dark:hover:bg-[#1F2937] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-all duration-250"
-                              ><EllipsisVertical className="w-4 h-4" /></button>
-                              {openDropdown === m.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#161B22] rounded-2xl border border-gray-200 dark:border-[#273244] w-[200px] z-50 p-2 animate-scaleIn shadow-xl">
-                                  <button onClick={() => { router.push(`/medicines/create?id=${m.id}`); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
-                                  ><Edit className="w-4 h-4" /> Edit</button>
-                                  <button onClick={() => { showToast(`Inventory history for ${m.name} is not available`, 'success'); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
-                                  ><Timer className="w-4 h-4" /> Inventory History</button>
-                                  <button onClick={() => { setBarcodeTarget(m); setOpenDropdown(null); }}
-                                    className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:text-gray-900 dark:hover:text-[#F8FAFC] transition-all duration-250"
-                                  ><ScanBarcode className="w-4 h-4" /> Barcode/QR</button>
-                                  <div className="pt-1 mt-1 border-t border-gray-100 dark:border-[#273244]">
-                                    <button onClick={() => { setDeleteTarget(m); setOpenDropdown(null); }}
-                                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-250"
-                                    ><Trash2 className="w-4 h-4" /> Delete</button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
+                            <button
+                              ref={el => { menuAnchors.current[m.id] = el; }}
+                              onClick={() => setOpenDropdown(openDropdown === m.id ? null : m.id)}
+                              aria-haspopup="menu"
+                              aria-expanded={openDropdown === m.id}
+                              aria-label={`Actions for ${m.name}`}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 dark:text-[#64748B] hover:bg-gray-100 dark:hover:bg-[#1F2937] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-colors duration-200"
+                            ><EllipsisVertical className="w-4 h-4" /></button>
                           </td>
                         </tr>
                       );
@@ -474,6 +519,52 @@ export default function MedicinesPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Rendered once, outside the overflow container, anchored to the open row */}
+
+            <MedicineDetailsDialog
+              open={!!detailsId}
+              productId={detailsId}
+              onClose={() => setDetailsId(null)}
+              onEdit={(id) => { setDetailsId(null); router.push(`/medicines/create?id=${id}`); }}
+              onHistory={(id) => {
+                const row = medicines.find(x => x.id === id);
+                setDetailsId(null);
+                showToast(`Inventory history for ${row?.name ?? 'this medicine'} is not available`, 'success');
+              }}
+            />
+
+            <DropdownMenu
+              open={!!openDropdown}
+              onClose={() => setOpenDropdown(null)}
+              anchorEl={openDropdown ? menuAnchors.current[openDropdown] ?? null : null}
+            >
+              {(() => {
+                const row = paginated.find(x => x.id === openDropdown);
+                if (!row) return null;
+                return (
+                  <>
+                    <DropdownItem icon={<Edit className="w-4 h-4" />}
+                      onClick={() => { setOpenDropdown(null); router.push(`/medicines/create?id=${row.id}`); }}>
+                      Edit
+                    </DropdownItem>
+                    <DropdownItem icon={<Timer className="w-4 h-4" />}
+                      onClick={() => { setOpenDropdown(null); showToast(`Inventory history for ${row.name} is not available`, 'success'); }}>
+                      Inventory History
+                    </DropdownItem>
+                    <DropdownItem icon={<ScanBarcode className="w-4 h-4" />}
+                      onClick={() => { setOpenDropdown(null); setBarcodeTarget(row); }}>
+                      Barcode/QR
+                    </DropdownItem>
+                    <DropdownSeparator />
+                    <DropdownItem destructive icon={<Trash2 className="w-4 h-4" />}
+                      onClick={() => { setOpenDropdown(null); setDeleteTarget(row); }}>
+                      Delete
+                    </DropdownItem>
+                  </>
+                );
+              })()}
+            </DropdownMenu>
 
             {/* Pagination */}
             <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-gray-100 dark:border-[#273244]">

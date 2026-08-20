@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/currency';
+import { isAnyModalOpen } from '@/lib/modal-guard';
 import {
   Search, X, Package, Users, Building2, FileText, Layers, ShoppingCart,
   ArrowRight, Command, Clock, TrendingUp, Star, ChevronRight, Plus,
@@ -280,7 +281,7 @@ export default function SearchModal({ isOpen, onClose, products, categories, tra
   }, [selectedIndex]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!isOpen) return;
+    if (isAnyModalOpen() || !isOpen) return;
     if (e.key === 'Escape') { e.preventDefault(); handleClose(); }
     if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, flatResults.length - 1)); }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); }

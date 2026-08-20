@@ -35,6 +35,7 @@ export class ApiClient {
       if (response.status === 401 && typeof window !== 'undefined') {
         localStorage.removeItem('authToken');
         localStorage.removeItem('user');
+        sessionStorage.removeItem('ims.stockAlert.seen');
         window.location.href = '/login';
       }
       const body = await response.text();
@@ -438,7 +439,13 @@ export const POSAPI = {
   voidTransaction: (id: string) => ApiClient.put(`/pos/transactions/${id}/void`, {}),
   getDailySales: async () => {
     const res = await ApiClient.get<ApiResponse>('/pos/daily-sales');
-    return res.data;
+    // Backend returns totalSales/totalRefunds/transactionCount at the top level
+    // of the Response envelope — not under `data`.
+    return {
+      totalSales: Number(res.totalSales ?? 0),
+      totalRefunds: Number(res.totalRefunds ?? 0),
+      transactionCount: Number(res.transactionCount ?? 0),
+    };
   },
 };
 

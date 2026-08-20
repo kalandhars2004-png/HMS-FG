@@ -1,11 +1,12 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import {
   RotateCw, Maximize, House, Search, CalendarDays, Filter, Columns, ArrowUpDown,
-  ArrowUpToLine, ChevronDown, X, Check, EllipsisVertical, Timer, AlertTriangle,
+  ArrowUpToLine, ChevronDown, X, Check, EllipsisVertical, Timer, Loader2, AlertTriangle,
 } from '@/components/ui/LucideIcon';
-import { ProductsAPI } from '@/lib/api';
+import { ProductsAPI, SuppliersAPI, ApiClient } from '@/lib/api';
 
 interface ExpiryEntry {
   sku: string;
@@ -16,67 +17,81 @@ interface ExpiryEntry {
   quantity: number;
   supplier: string;
   status: string;
+  sortDate: number;
 }
 
-const CATEGORY_BADGE: Record<string, string> = {
-  Tablet: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
-  Syrup: 'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-400',
-  Injection: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
-  Oinment: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400',
-  Capsule: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  Drops: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
-  'Medical Devices': 'bg-gray-100 text-gray-700 dark:bg-white/[0.06] dark:text-gray-300',
-  Supplements: 'bg-lime-50 text-lime-700 dark:bg-lime-500/10 dark:text-lime-400',
-  Uncategorized: 'bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400',
-};
+const BADGE_PALETTE = [
+  'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
+  'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-400',
+  'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
+  'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400',
+  'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
+  'bg-lime-50 text-lime-700 dark:bg-lime-500/10 dark:text-lime-400',
+  'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
+];
+
+const AVATAR_PALETTE = [
+  'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+  'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
+  'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+];
+
+function toneOf(name: string, palette: string[]) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
+  return palette[h % palette.length];
+}
+
+const categoryTone = (category: string) => toneOf(category || 'Uncategorized', BADGE_PALETTE);
+const supplierTone = (supplier: string) => toneOf(supplier || '-', AVATAR_PALETTE);
 
 const STATUS_BADGE: Record<string, string> = {
   warning: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   purple: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
   danger: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  neutral: 'bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400',
 };
 
-const SUPPLIER_AVATARS: Record<string, string> = {
-  'MedLife Distributors': 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
-  'HealthCare Pharma': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  'GreenCross Medicals': 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
-  'NovaCure Pharma': 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  'CareWell Agency': 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-  'Zenith Distributors': 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
-  'LifeLine Pharma': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
-  'SafeMeds Distribution': 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
-  'NovaHealth Pharma': 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
-  'PrimeCare Pharma': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
+function fmtDate(dateStr?: string | null) {
+  if (!dateStr) return 'N/A';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function expiryStatus(expiry: string | null | undefined, now: Date): string {
+  if (!expiry) return 'Valid';
+  const t = new Date(expiry).getTime();
+  if (Number.isNaN(t)) return 'Valid';
+  const days = Math.ceil((t - now.getTime()) / 86400000);
+  if (days < 0) return 'Expired';
+  if (days <= 7) return `Expire in ${days} days`;
+  if (days <= 30) return `Expire in ${days} days`;
+  return 'Valid';
+}
+
+const statusTone = (status: string): keyof typeof STATUS_BADGE => {
+  if (status === 'Expired') return 'danger';
+  if (status === 'Valid') return 'neutral';
+  const m = status.match(/^Expire in (\d+) days?$/);
+  if (m) return Number(m[1]) <= 7 ? 'warning' : 'purple';
+  return 'neutral';
 };
-
-const TEMPLATE_ROWS: ExpiryEntry[] = [
-  { sku: '#TAB016', item: 'Paracetamol 500', category: 'Tablet', batchId: '#BTH016', expiryDate: '28 Jan 2026', quantity: 20, supplier: 'MedLife Distributors', status: 'Expire in 2 days' },
-  { sku: '#TAB015', item: 'Amoxicillin 250', category: 'Tablet', batchId: '#BTH015', expiryDate: '15 Feb 2026', quantity: 200, supplier: 'HealthCare Pharma', status: 'Expire in 20 days' },
-  { sku: '#SYR014', item: 'Cetirizine', category: 'Syrup', batchId: '#BTH014', expiryDate: '10 Mar 2026', quantity: 40, supplier: 'GreenCross Medicals', status: 'Expired' },
-  { sku: '#TAB013', item: 'Ceftriaxone 20', category: 'Tablet', batchId: '#BTH013', expiryDate: '14 Apr 2026', quantity: 120, supplier: 'NovaCure Pharma', status: 'Expire in 7 days' },
-  { sku: '#CRE012', item: 'Betnovate', category: 'Oinment', batchId: '#BTH012', expiryDate: '30 May 2026', quantity: 60, supplier: 'CareWell Agency', status: 'Expire in 30 days' },
-  { sku: '#TAB011', item: 'Amoxicillin 30', category: 'Tablet', batchId: '#BTH011', expiryDate: '02 Jun 2026', quantity: 310, supplier: 'Zenith Distributors', status: 'Expire in 10 days' },
-  { sku: '#INJ010', item: 'Tetanus Toxoid', category: 'Injection', batchId: '#BTH010', expiryDate: '07 Jul 2026', quantity: 250, supplier: 'LifeLine Pharma', status: 'Expired' },
-  { sku: '#SYR009', item: 'Atorvastatin', category: 'Syrup', batchId: '#BTH009', expiryDate: '21 Aug 2026', quantity: 35, supplier: 'SafeMeds Distribution', status: 'Expire in 7 days' },
-  { sku: '#TAB008', item: 'Metformin 100', category: 'Tablet', batchId: '#BTH008', expiryDate: '17 Nov 2026', quantity: 150, supplier: 'NovaHealth Pharma', status: 'Expire in 30 days' },
-  { sku: '#INJ007', item: 'Ondansetron', category: 'Injection', batchId: '#BTH007', expiryDate: '10 Dec 2026', quantity: 120, supplier: 'PrimeCare Pharma', status: 'Expired' },
-];
-
-const statusTone = (status: string): keyof typeof STATUS_BADGE =>
-  status === 'Expired' ? 'danger' : status.includes('20') || status.includes('30') ? 'purple' : 'warning';
 
 const COLUMN_DEFS = ['SKU', 'Item', 'Category', 'Batch ID', 'Expiry Date', 'Quantity', 'Supplier', 'Status'];
-
-const MEDICINE_OPTIONS = ['Paracetamol 500', 'Amoxicillin 250', 'Cetirizine', 'Ceftriaxone 20', 'Betnovate', 'Amoxicillin 30', 'Tetanus Toxoid', 'Atorvastatin'];
-const CATEGORY_OPTIONS = ['Uncategorized', 'Tablet', 'Capsule', 'Oinment', 'Syrup', 'Drops', 'Medical Devices', 'Supplements'];
-const SUPPLIER_OPTIONS = ['MedLife Distributors', 'HealthCare Pharma', 'GreenCross Medicals', 'NovaCure Pharma', 'CareWell Agency', 'Zenith Distributors', 'LifeLine Pharma', 'SafeMeds Distribution'];
-const STATUS_OPTIONS = ['Expire in 2 days', 'Expire in 20 days', 'Expired'];
 
 const cardCls = 'bg-white dark:bg-[#161B22] rounded-[0.85rem] border border-gray-200/70 dark:border-[#273244] shadow-[0_2px_10px_rgba(15,23,42,0.04)] dark:shadow-none';
 const dropdownBtnCls = 'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250';
 
 export default function ExpiryTrackingPage() {
-  const [rows, setRows] = useState<ExpiryEntry[]>(TEMPLATE_ROWS);
+  const [rows, setRows] = useState<ExpiryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [openDropdown, setOpenDropdown] = useState<'columns' | 'sort' | 'export' | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(COLUMN_DEFS));
@@ -96,24 +111,67 @@ export default function ExpiryTrackingPage() {
   const [catSearch, setCatSearch] = useState('');
   const [supSearch, setSupSearch] = useState('');
 
-  useEffect(() => {
-    ProductsAPI.getAll().then((res: any) => {
-      const list: any[] = res.data || [];
-      if (list.length > 0) {
-        const mapped: ExpiryEntry[] = list.slice(0, 10).map((p: any, i: number) => ({
-          sku: p.sku || `#TAB${String(16 - i).padStart(3, '0')}`,
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [pRes, sRes, bRes] = await Promise.all([
+        ProductsAPI.getAll().catch(() => null),
+        SuppliersAPI.getAll().catch(() => null),
+        ApiClient.get<any>('/batches/all').catch(() => null),
+      ]);
+      const products: any[] = pRes?.data ?? [];
+      const suppliers: any[] = sRes?.data ?? [];
+      const batches: any[] = bRes && Array.isArray(bRes.batches) ? bRes.batches : [];
+      const now = new Date();
+      const prodById = new Map(products.map(p => [Number(p.id), p]));
+      const supName = new Map(suppliers.map(s => [Number(s.id), s.name]));
+      const entries: ExpiryEntry[] = [];
+      const seen = new Set<number>();
+
+      batches.forEach(b => {
+        const prod = b.productId != null ? prodById.get(Number(b.productId)) : undefined;
+        entries.push({
+          sku: prod?.sku ? prod.sku : `#SKU-${b.productId ?? b.id}`,
+          item: prod?.name ? prod.name : (b.productName || 'Unnamed'),
+          category: prod?.categoryName || 'Uncategorized',
+          batchId: b.batchNo ? `#${b.batchNo}` : `#BTH-${b.id}`,
+          expiryDate: fmtDate(b.expiryDate),
+          quantity: Number(b.quantity ?? 0),
+          supplier: prod?.supplierId != null ? (supName.get(Number(prod.supplierId)) || '-') : '-',
+          status: expiryStatus(b.expiryDate, now),
+          sortDate: b.expiryDate ? new Date(b.expiryDate).getTime() : Number.MAX_SAFE_INTEGER,
+        });
+        if (b.productId != null) seen.add(Number(b.productId));
+      });
+
+      products.forEach(p => {
+        if (seen.has(Number(p.id)) || !p.expiryDate) return;
+        entries.push({
+          sku: p.sku ? p.sku : `#SKU-${p.id}`,
           item: p.name || 'Unnamed',
-          category: p.categoryName || 'Tablet',
-          batchId: `#BTH${String(16 - i).padStart(3, '0')}`,
-          expiryDate: p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+          category: p.categoryName || 'Uncategorized',
+          batchId: `#BTH-${p.id}`,
+          expiryDate: fmtDate(p.expiryDate),
           quantity: Number(p.quantity ?? p.stockQuantity ?? 0),
-          supplier: p.supplierName || 'MedLife Distributors',
-          status: ['Expire in 2 days', 'Expire in 20 days', 'Expired'][i % 3],
-        }));
-        setRows(mapped);
-      }
-    }).catch(() => {});
+          supplier: p.supplierId != null ? (supName.get(Number(p.supplierId)) || '-') : '-',
+          status: expiryStatus(p.expiryDate, now),
+          sortDate: new Date(p.expiryDate).getTime(),
+        });
+      });
+
+      entries.sort((a, b) => a.sortDate - b.sortDate);
+      setRows(entries);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const toggleColumn = (col: string) => {
     setVisibleColumns(prev => {
@@ -170,9 +228,14 @@ export default function ExpiryTrackingPage() {
   const toggleFilter = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
 
-  const filteredMeds = MEDICINE_OPTIONS.filter(m => m.toLowerCase().includes(medSearch.toLowerCase()));
-  const filteredCats = CATEGORY_OPTIONS.filter(c => c.toLowerCase().includes(catSearch.toLowerCase()));
-  const filteredSups = SUPPLIER_OPTIONS.filter(s => s.toLowerCase().includes(supSearch.toLowerCase()));
+  const medOptions = useMemo(() => Array.from(new Set(rows.map(r => r.item).filter(Boolean))), [rows]);
+  const catOptions = useMemo(() => Array.from(new Set(rows.map(r => r.category).filter(Boolean))), [rows]);
+  const supOptions = useMemo(() => Array.from(new Set(rows.map(r => r.supplier).filter(s => s && s !== '-'))), [rows]);
+  const statusOptions = useMemo(() => Array.from(new Set(rows.map(r => r.status))), [rows]);
+
+  const filteredMeds = medOptions.filter(m => m.toLowerCase().includes(medSearch.toLowerCase()));
+  const filteredCats = catOptions.filter(c => c.toLowerCase().includes(catSearch.toLowerCase()));
+  const filteredSups = supOptions.filter(s => s.toLowerCase().includes(supSearch.toLowerCase()));
 
   return (
     <div className="p-6 animate-fadeIn">
@@ -190,8 +253,8 @@ export default function ExpiryTrackingPage() {
           </ol>
         </nav>
         <div className="flex items-center gap-2">
-          <button title="Refresh" className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all duration-250 shadow-sm">
-            <RotateCw className="w-4 h-4" />
+          <button title="Refresh" onClick={loadData} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all duration-250 shadow-sm">
+            <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button
             title="Maximize"
@@ -332,8 +395,24 @@ export default function ExpiryTrackingPage() {
               {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={COLUMN_DEFS.filter(c => visibleColumns.has(c)).length} className="px-5 py-16 text-center">
-                    <Timer className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-400 text-sm mb-1">No expiry records found</p>
+                    {loading ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="w-8 h-8 text-[#0F9291] animate-spin" />
+                        <p className="text-gray-400 dark:text-gray-500 text-sm m-0">Loading expiry data...</p>
+                      </div>
+                    ) : loadError ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <AlertTriangle className="w-8 h-8 text-red-400" />
+                        <p className="text-gray-500 dark:text-gray-400 text-sm m-0">Failed to load expiry data</p>
+                        <button onClick={loadData} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0F9291] hover:bg-teal-700 rounded-xl transition-all duration-250">Retry</button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Timer className="w-10 h-10 text-gray-300 mx-auto" />
+                        <p className="text-gray-400 dark:text-gray-500 text-sm mb-1">No expiry records found</p>
+                        <p className="text-xs text-gray-300 dark:text-gray-600 m-0">Add batches or products with expiry dates to see them here</p>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : paginated.map((row, i) => (
@@ -346,7 +425,7 @@ export default function ExpiryTrackingPage() {
                   )}
                   {visibleColumns.has('Category') && (
                     <td className="px-5 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${CATEGORY_BADGE[row.category] || CATEGORY_BADGE.Uncategorized}`}>
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${categoryTone(row.category)}`}>
                         {row.category}
                       </span>
                     </td>
@@ -363,7 +442,7 @@ export default function ExpiryTrackingPage() {
                   {visibleColumns.has('Supplier') && (
                     <td className="px-5 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-[#F8FAFC]">
-                        <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${SUPPLIER_AVATARS[row.supplier] || 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${supplierTone(row.supplier)}`}>
                           {row.supplier.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                         </span>
                         {row.supplier}
@@ -521,7 +600,7 @@ export default function ExpiryTrackingPage() {
                         onChange={() => toggleFilter(catFilter, setCatFilter, cat)}
                         className="w-4 h-4 accent-[#0F9291] rounded"
                       />
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${CATEGORY_BADGE[cat] || CATEGORY_BADGE.Uncategorized}`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${categoryTone(cat)}`}>
                         {cat}
                       </span>
                     </label>
@@ -561,7 +640,7 @@ export default function ExpiryTrackingPage() {
                 <div className="space-y-1">
                   {filteredSups.slice(0, supMore ? filteredSups.length : 5).map(sup => (
                     <label key={sup} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
-                      <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${SUPPLIER_AVATARS[sup] || 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${supplierTone(sup)}`}>
                         {sup.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </span>
                       <input
@@ -596,7 +675,7 @@ export default function ExpiryTrackingPage() {
                   </button>
                 </h4>
                 <div className="space-y-1">
-                  {STATUS_OPTIONS.map(status => (
+                  {statusOptions.map(status => (
                     <label key={status} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
                       <input
                         type="checkbox"

@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Category } from '@/types';
-import { CategoriesAPI } from '@/lib/api';
+import { CategoriesAPI, ProductsAPI, RacksAPI } from '@/lib/api';
 import {
   Search, Plus, RotateCw, Maximize, X, Edit2, Trash2,
-  ChevronDown, ChevronUp, Download, Printer, FileSpreadsheet,
-  FolderOpen, CheckCircle, XCircle, AlertTriangle,
-  Columns, House, FolderTree,
+  ChevronDown, ChevronUp, ChevronRight, Download, Printer, FileSpreadsheet,
+  FolderOpen, CheckCircle, XCircle, AlertTriangle, Check,
+  Columns, House, FolderTree, MoreVertical, ArrowUpDown, ArrowUpToLine,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { modalInputCls, modalSelectCls, modalLabelCls, modalHintCls, GlobalConfirmModal } from '@/components/ui/GlobalModal';
+import DropdownMenu from '@/components/ui/DropdownMenu';
+import { toCSV, toXLSX, downloadBlob, printReport, type Column } from '@/lib/export';
 
 interface ToastItem { id: string; type: 'success' | 'error'; message: string; }
 
@@ -18,13 +20,38 @@ interface SortConfig { key: string; direction: 'asc' | 'desc'; }
 interface ColumnDef { key: string; label: string; visible: boolean; sortable: boolean; }
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
+  { key: 'code', label: 'Category ID', visible: true, sortable: true },
   { key: 'name', label: 'Category', visible: true, sortable: true },
-  { key: 'code', label: 'Code', visible: true, sortable: true },
   { key: 'description', label: 'Description', visible: true, sortable: false },
-  { key: 'parent', label: 'Parent Category', visible: true, sortable: true },
-  { key: 'displayOrder', label: 'Order', visible: true, sortable: true },
-  { key: 'createdAt', label: 'Created Date', visible: true, sortable: true },
+  { key: 'items', label: 'No of Items', visible: true, sortable: true },
+  { key: 'storage', label: 'Storage Type', visible: true, sortable: true },
+  { key: 'parent', label: 'Parent Category', visible: false, sortable: true },
+  { key: 'displayOrder', label: 'Order', visible: false, sortable: true },
+  { key: 'createdAt', label: 'Created Date', visible: false, sortable: true },
 ];
+
+const SORT_OPTIONS: { key: string; label: string; direction: 'asc' | 'desc' }[] = [
+  { key: 'createdAt', label: 'Recently Added', direction: 'desc' },
+  { key: 'name', label: 'Category (A–Z)', direction: 'asc' },
+  { key: 'name', label: 'Category (Z–A)', direction: 'desc' },
+  { key: 'items', label: 'Most Items', direction: 'desc' },
+  { key: 'items', label: 'Fewest Items', direction: 'asc' },
+];
+
+/** Rack temperature codes are stored as enum-ish strings; show them in plain English. */
+const STORAGE_LABELS: Record<string, string> = {
+  ROOM_TEMP: 'Room Temp',
+  COOL_DRY: 'Cool & Dry',
+  REFRIGERATED: 'Refrigerated',
+  FROZEN: 'Frozen',
+  CONTROLLED: 'Controlled',
+};
+
+const storageLabel = (raw?: string) => {
+  if (!raw) return '';
+  return STORAGE_LABELS[raw] ?? raw.replace(/_/g, ' ').toLowerCase()
+    .replace(/\b\w/g, ch => ch.toUpperCase());
+};
 
 function generateSlug(name: string) {
   return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -49,6 +76,50 @@ function ToastContainer({ items, onRemove }: { items: ToastItem[]; onRemove: (id
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Row menu. Rendered through the portal-based DropdownMenu because the table
+ * sits in an `overflow-x-auto` wrapper, which clips an absolutely positioned
+ * menu vertically no matter what z-index it carries.
+ */
+function RowActions({ category, onEdit, onDelete, onToggle }: {
+  category: Category;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // A ref per row — a single shared ref would anchor every menu to the last row.
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const item = 'flex items-center gap-2.5 w-full px-4 py-2.5 text-[14px] transition-colors';
+
+  return (
+    <>
+      <button ref={btnRef} onClick={() => setOpen(v => !v)} aria-label="Row actions"
+        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-[#1F2937] transition-colors">
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      <DropdownMenu open={open} onClose={() => setOpen(false)} anchorEl={btnRef.current} width={190}>
+        <button onClick={() => { setOpen(false); onEdit(); }}
+          className={`${item} text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]`}>
+          <Edit2 className="w-4 h-4 text-gray-400" /> Edit Category
+        </button>
+        <button onClick={() => { setOpen(false); onToggle(); }}
+          className={`${item} text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]`}>
+          {category.status
+            ? <><XCircle className="w-4 h-4 text-gray-400" /> Deactivate</>
+            : <><CheckCircle className="w-4 h-4 text-emerald-500" /> Activate</>}
+        </button>
+        <div className="border-t border-gray-100 dark:border-[#273244] my-1" />
+        <button onClick={() => { setOpen(false); onDelete(); }}
+          className={`${item} text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20`}>
+          <Trash2 className="w-4 h-4" /> Delete
+        </button>
+      </DropdownMenu>
+    </>
   );
 }
 
@@ -78,6 +149,8 @@ function TableSkeleton() {
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [racks, setRacks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,9 +167,14 @@ export default function CategoriesPage() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [columnDefs, setColumnDefs] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  /** Shared pill style for the three toolbar dropdowns. */
+  const toolBtn = 'inline-flex items-center gap-2 h-11 px-4 rounded-full border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-[15px] font-medium text-gray-700 dark:text-gray-200 hover:border-[#0F9291]/40 transition-colors';
 
   useEffect(() => { loadItems(); }, []);
   useEffect(() => {
@@ -108,6 +186,7 @@ export default function CategoriesPage() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpenDropdown(d => d === 'bulk' ? null : d);
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) setOpenDropdown(d => d === 'export' ? null : d);
       if (columnsRef.current && !columnsRef.current.contains(e.target as Node)) setOpenDropdown(d => d === 'columns' ? null : d);
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setOpenDropdown(d => d === 'sort' ? null : d);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -123,14 +202,51 @@ export default function CategoriesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const res = await CategoriesAPI.getAll();
-      setCategories(res.data);
+      // Item counts and storage type are not columns on Category — they are
+      // derived from the products filed under it and the racks tagged with it.
+      const [cats, prods, racks] = await Promise.all([
+        CategoriesAPI.getAll(),
+        ProductsAPI.getAll().catch(() => ({ data: [] })),
+        RacksAPI.getAll().catch(() => ({ data: [] })),
+      ]);
+      setCategories(cats.data);
+      setProducts(prods.data || []);
+      setRacks(racks.data || []);
     } catch {
       setError('Failed to load categories');
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  /** Products filed under each category, counted by the category name they carry. */
+  const itemCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    products.forEach((p: any) => {
+      const k = (p.categoryName || '').trim();
+      if (k) map.set(k, (map.get(k) || 0) + 1);
+    });
+    return map;
+  }, [products]);
+
+  /** Racks are tagged with a category name and carry the temperature they hold at. */
+  const storageTypes = useMemo(() => {
+    const map = new Map<string, string[]>();
+    racks.forEach((r: any) => {
+      const k = (r.category || '').trim();
+      const t = storageLabel(r.temperature);
+      if (!k || !t) return;
+      const list = map.get(k) || [];
+      if (!list.includes(t)) list.push(t);
+      map.set(k, list);
+    });
+    return map;
+  }, [racks]);
+
+  const storageFor = useCallback(
+    (name: string) => (storageTypes.get(name) || []).join(', '),
+    [storageTypes],
+  );
 
   const parentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -149,9 +265,15 @@ export default function CategoriesPage() {
       );
     }
     if (sortConfig) {
+      // Two columns are computed rather than stored, so they need their own reads.
+      const read = (c: Category) => {
+        if (sortConfig.key === 'items') return itemCounts.get(c.name) || 0;
+        if (sortConfig.key === 'storage') return storageFor(c.name);
+        return c[sortConfig.key as keyof Category];
+      };
       result.sort((a, b) => {
-        const aVal = a[sortConfig.key as keyof Category];
-        const bVal = b[sortConfig.key as keyof Category];
+        const aVal = read(a);
+        const bVal = read(b);
         if (aVal == null) return 1;
         if (bVal == null) return -1;
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -160,20 +282,13 @@ export default function CategoriesPage() {
       });
     }
     return result;
-  }, [categories, debouncedSearch, sortConfig]);
+  }, [categories, debouncedSearch, sortConfig, itemCounts, storageFor]);
 
   const totalPages = Math.ceil(processedCategories.length / perPage);
   const paginatedCategories = useMemo(() => {
     const start = (page - 1) * perPage;
     return processedCategories.slice(start, start + perPage);
   }, [processedCategories, page, perPage]);
-
-  const stats = useMemo(() => ({
-    total: categories.length,
-    active: categories.filter(c => c.status).length,
-    inactive: categories.filter(c => !c.status).length,
-    withParent: categories.filter(c => c.parentId).length,
-  }), [categories]);
 
   const allSelected = paginatedCategories.length > 0 && paginatedCategories.every(c => selectedIds.has(c.id));
 
@@ -252,25 +367,24 @@ export default function CategoriesPage() {
     }
   }, [bulkAction, selectedIds, addToast]);
 
-  const exportCSV = useCallback(() => {
-    const headers = ['Name', 'Code', 'Description', 'Parent', 'Display Order', 'Status', 'Created'];
-    const rows = categories.map(c => [
-      c.name, c.slug, c.description || '', parentMap.get(c.parentId || '') || '', c.displayOrder ?? '', c.status ? 'Active' : 'Inactive', formatDate(c.createdAt),
-    ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'categories.csv'; a.click();
-    URL.revokeObjectURL(url);
+  /** Exports what is on screen — current search and sort, not the raw table. */
+  const exportAs = useCallback((fmt: 'csv' | 'excel' | 'pdf') => {
     setOpenDropdown(null);
-    addToast('success', 'CSV exported');
-  }, [categories, parentMap, addToast]);
-
-  const handlePrint = useCallback(() => {
-    setOpenDropdown(null);
-    window.print();
-  }, []);
+    const cols: Column<Category>[] = [
+      { header: 'Category ID', value: c => c.code || c.slug || String(c.id) },
+      { header: 'Category', value: c => c.name },
+      { header: 'Description', value: c => c.description || '' },
+      { header: 'No of Items', value: c => itemCounts.get(c.name) || 0 },
+      { header: 'Storage Type', value: c => storageFor(c.name) || 'Not set' },
+      { header: 'Status', value: c => (c.status ? 'Active' : 'Inactive') },
+      { header: 'Created', value: c => formatDate(c.createdAt) },
+    ];
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (fmt === 'csv') downloadBlob(toCSV(cols, processedCategories), `categories_${stamp}.csv`);
+    else if (fmt === 'excel') downloadBlob(toXLSX('Categories', cols, processedCategories), `categories_${stamp}.xlsx`);
+    else printReport('Categories', `${processedCategories.length} records · ${stamp}`, cols, processedCategories);
+    if (fmt !== 'pdf') addToast('success', `Exported ${processedCategories.length} categories`);
+  }, [processedCategories, itemCounts, storageFor, addToast]);
 
   const toggleColumn = useCallback((key: string) => {
     setColumnDefs(prev => prev.map(c => c.key === key ? { ...c, visible: !c.visible } : c));
@@ -286,77 +400,54 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="p-6 animate-fadeIn">
+    <div className={expanded
+      ? 'fixed inset-0 z-[200] p-6 bg-[#F5F6FA] dark:bg-[#0B0F16] overflow-y-auto ims-scroll'
+      : 'p-6 animate-fadeIn'}>
+      <h1 className="text-[26px] font-bold text-gray-900 dark:text-white leading-tight mb-4">Categories</h1>
+
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <nav aria-label="breadcrumb">
-          <ol className="flex items-center gap-1.5 m-0 p-0 list-none text-sm">
-            <li className="flex items-center gap-1.5">
-              <a href="/dashboard" className="text-gray-500 hover:text-gray-700 no-underline flex items-center gap-1.5">
-                <House className="w-4 h-4" /> Dashboard
+          <ol className="flex items-center gap-2 m-0 p-0 list-none text-[15px]">
+            <li className="flex items-center gap-2">
+              <a href="/dashboard" className="text-gray-500 hover:text-[#0F9291] no-underline flex items-center gap-2 transition-colors">
+                <span className="w-7 h-7 rounded-lg bg-[#0F9291]/10 flex items-center justify-center">
+                  <House className="w-4 h-4 text-[#0F9291]" />
+                </span>
+                Dashboard
               </a>
-              <span className="text-gray-300 mx-1">/</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
             </li>
-            <li className="text-gray-900 font-medium" aria-current="page">Categories</li>
+            <li className="text-gray-900 dark:text-white font-medium" aria-current="page">Categories List</li>
           </ol>
         </nav>
-        <div className="flex items-center gap-2">
-          <button onClick={loadItems} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Refresh"><RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /></button>
-          <div className="relative" ref={columnsRef}>
-            <button onClick={() => setOpenDropdown(o => o === 'columns' ? null : 'columns')} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Columns"><Columns className="w-4 h-4" /></button>
-            {openDropdown === 'columns' && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-3 px-4 space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Toggle Columns</p>
-                {columnDefs.map(col => (
-                  <label key={col.key} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                    <input type="checkbox" checked={col.visible} onChange={() => toggleColumn(col.key)} className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] focus:ring-offset-0" />
-                    {col.label}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="relative" ref={exportRef}>
-            <button onClick={() => setOpenDropdown(o => o === 'export' ? null : 'export')} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Export"><Download className="w-4 h-4" /></button>
-            {openDropdown === 'export' && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 overflow-hidden">
-                <button onClick={exportCSV} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export CSV</button>
-                <button onClick={() => { setOpenDropdown(null); exportCSV(); }} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><FileSpreadsheet className="w-4 h-4 text-blue-600" /> Export Excel</button>
-                <button onClick={handlePrint} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><Printer className="w-4 h-4 text-gray-600" /> Print</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => document.querySelector('.p-6')?.classList.toggle('maximized')} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-all duration-250 shadow-sm" title="Maximize"><Maximize className="w-4 h-4" /></button>
-          <button onClick={() => { setEditingCategory(null); setShowModal(true); }} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0F9291] text-white font-semibold text-sm hover:bg-teal-700 transition-all duration-250 shadow-sm hover:shadow-md active:scale-95">
-            <Plus className="w-4 h-4" /> Add Category
+        <div className="flex items-center gap-2.5">
+          <button onClick={loadItems} title="Refresh"
+            className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 hover:text-[#0F9291] hover:border-[#0F9291]/40 transition-colors">
+            <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+          <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Exit full screen' : 'Full screen'}
+            className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 hover:text-[#0F9291] hover:border-[#0F9291]/40 transition-colors">
+            <Maximize className="w-4 h-4" />
+          </button>
+          <button onClick={() => { setEditingCategory(null); setShowModal(true); }}
+            className="inline-flex items-center gap-2 h-10 px-5 rounded-full text-white font-semibold text-[15px] hover:opacity-90 transition-opacity active:scale-[0.98]"
+            style={{ background: 'linear-gradient(103.28deg,#0EA5A4 0%,#175780 100%)' }}>
+            <Plus className="w-4 h-4" /> Add New
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        {[
-          { label: 'Total Categories', value: stats.total, icon: FolderOpen, color: 'text-[#0F9291]' },
-          { label: 'Active', value: stats.active, icon: CheckCircle, color: 'text-emerald-600' },
-          { label: 'Inactive', value: stats.inactive, icon: XCircle, color: 'text-red-600' },
-          { label: 'With Parent', value: stats.withParent, icon: House, color: 'text-purple-600' },
-        ].map((card, i) => (
-          <div key={i} className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] p-5 transition-all duration-250 hover:shadow-[0_15px_40px_rgba(15,23,42,0.08)] hover:-translate-y-0.5">
-            <p className="text-sm font-medium text-gray-500 m-0 flex items-center gap-2 mb-3"><card.icon className={`w-4 h-4 ${card.color}`} /> {card.label}</p>
-            <h4 className="text-2xl font-bold text-gray-900 m-0">{card.value}</h4>
-          </div>
-        ))}
-      </div>
-
       <div className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
+        <div className="px-4 py-3.5 border-b border-gray-100 dark:border-[#273244]">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
-                  type="text" placeholder="Search name, code, description..."
+                  type="text" placeholder="Search categories"
                   value={searchQuery}
                   onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                  className="w-60 pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-[#0F9291] focus:shadow-[0_0_0_3px_rgba(15,146,145,0.1)]"
+                  className="w-[230px] h-11 pl-10 pr-3 text-[15px] rounded-full border border-gray-200 dark:border-[#273244] dark:bg-[#111827] focus:outline-none focus:border-[#0F9291] transition-colors"
                 />
               </div>
               {selectedIds.size > 0 && (
@@ -375,10 +466,66 @@ export default function CategoriesPage() {
                 </div>
               )}
             </div>
-            <span className="text-xs text-gray-400 font-medium">
-              {processedCategories.length} category{processedCategories.length !== 1 ? 'ies' : 'y'}
-              {selectedIds.size > 0 && <> &middot; {selectedIds.size} selected</>}
-            </span>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="relative" ref={columnsRef}>
+                <button onClick={() => setOpenDropdown(o => o === 'columns' ? null : 'columns')} className={toolBtn}>
+                  <Columns className="w-4 h-4 text-gray-400" /> Columns <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+                {openDropdown === 'columns' && (
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-56 bg-white dark:bg-[#161B22] rounded-xl shadow-lg border border-gray-100 dark:border-[#273244] py-3 px-4 space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Toggle Columns</p>
+                    {columnDefs.map(col => (
+                      <label key={col.key} className="flex items-center gap-2 text-[14px] text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                        <input type="checkbox" checked={col.visible} onChange={() => toggleColumn(col.key)}
+                          className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] focus:ring-offset-0" />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative" ref={sortRef}>
+                <button onClick={() => setOpenDropdown(o => o === 'sort' ? null : 'sort')} className={toolBtn}>
+                  <ArrowUpDown className="w-4 h-4 text-gray-400" /> Sort by <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+                {openDropdown === 'sort' && (
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-white dark:bg-[#161B22] rounded-xl shadow-lg border border-gray-100 dark:border-[#273244] py-1.5 overflow-hidden">
+                    {SORT_OPTIONS.map(opt => {
+                      const active = sortConfig?.key === opt.key && sortConfig.direction === opt.direction;
+                      return (
+                        <button key={opt.label}
+                          onClick={() => { setSortConfig({ key: opt.key, direction: opt.direction }); setPage(1); setOpenDropdown(null); }}
+                          className={`flex items-center justify-between w-full px-4 py-2.5 text-[14px] transition-colors ${
+                            active ? 'text-[#0F9291] font-semibold bg-[#0F9291]/[0.06]' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}>
+                          {opt.label}
+                          {active && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative" ref={exportRef}>
+                <button onClick={() => setOpenDropdown(o => o === 'export' ? null : 'export')} className={toolBtn}>
+                  <ArrowUpToLine className="w-4 h-4 text-gray-400" /> Export <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+                {openDropdown === 'export' && (
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white dark:bg-[#161B22] rounded-xl shadow-lg border border-gray-100 dark:border-[#273244] py-1.5 overflow-hidden">
+                    <button onClick={() => exportAs('excel')} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[14px] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Excel (.xlsx)
+                    </button>
+                    <button onClick={() => exportAs('csv')} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[14px] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]">
+                      <Download className="w-4 h-4 text-blue-600" /> CSV (.csv)
+                    </button>
+                    <button onClick={() => exportAs('pdf')} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[14px] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]">
+                      <Printer className="w-4 h-4 text-gray-500" /> PDF (print)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -407,8 +554,8 @@ export default function CategoriesPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-100">
-                  <th className="px-4 py-3.5 w-10">
+                <tr className="bg-[#F8F9FB] dark:bg-[#161B22] border-y border-gray-100 dark:border-[#273244]">
+                  <th className="px-4 py-4 w-10">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -416,17 +563,16 @@ export default function CategoriesPage() {
                       className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] focus:ring-offset-0 cursor-pointer"
                     />
                   </th>
-                  <th className={`px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer select-none ${sortConfig?.key === 'name' ? 'text-[#0F9291]' : ''}`} onClick={() => handleSort('name')}><span className="flex items-center gap-1">Category {getSortIcon('name')}</span></th>
-                  {visibleColumns.map(col => col.key !== 'name' && (
-                    <th key={col.key} className={`px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none' : ''} ${sortConfig?.key === col.key ? 'text-[#0F9291]' : ''}`} onClick={() => col.sortable && handleSort(col.key)}><span className="flex items-center gap-1">{col.label} {col.sortable && getSortIcon(col.key)}</span></th>
+                  {visibleColumns.map(col => (
+                    <th key={col.key} className={`px-4 py-4 text-left text-[15px] font-semibold whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none' : ''} ${sortConfig?.key === col.key ? 'text-[#0F9291]' : 'text-gray-700 dark:text-gray-200'}`} onClick={() => col.sortable && handleSort(col.key)}><span className="flex items-center gap-1">{col.label} {col.sortable && getSortIcon(col.key)}</span></th>
                   ))}
-                  <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
-                  <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
+                  <th className="px-4 py-4 text-left text-[15px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-4 text-right text-[15px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-100 dark:divide-[#273244]">
                 {paginatedCategories.map(category => (
-                  <tr key={category.id} className="hover:bg-gray-50/50 transition-colors duration-250">
+                  <tr key={category.id} className="hover:bg-[#F8F9FB] dark:hover:bg-[#161B22] transition-colors">
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
@@ -435,41 +581,68 @@ export default function CategoriesPage() {
                         className="rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] focus:ring-offset-0 cursor-pointer"
                       />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center w-9 h-9 rounded-xl text-base shrink-0" style={{ backgroundColor: category.color ? `${category.color}20` : '#f3f4f6', color: category.color || '#6b7280' }}>
-                          {category.icon || '📁'}
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 m-0">{category.name}</p>
-                        </div>
-                      </div>
-                    </td>
                     {visibleColumns.map(col => {
-                      if (col.key === 'name' || col.key === 'status') return null;
-                      if (col.key === 'code') return <td key={col.key} className="px-4 py-3 whitespace-nowrap"><code className="text-xs font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded-md">{category.slug}</code></td>;
-                      if (col.key === 'description') return <td key={col.key} className="px-4 py-3 text-sm text-gray-500 max-w-[200px] truncate">{category.description || '-'}</td>;
+                      if (col.key === 'code') return (
+                        <td key={col.key} className="px-4 py-4 whitespace-nowrap">
+                          <button onClick={() => { setEditingCategory(category); setShowModal(true); }}
+                            className="text-[15px] font-medium text-[#4B5AED] hover:underline">
+                            #{category.code || category.slug || category.id}
+                          </button>
+                        </td>
+                      );
+                      if (col.key === 'name') return (
+                        <td key={col.key} className="px-4 py-4 whitespace-nowrap">
+                          <span className="flex items-center gap-3">
+                            {category.icon && (
+                              <span className="flex items-center justify-center w-9 h-9 rounded-xl text-base shrink-0"
+                                style={{ backgroundColor: category.color ? `${category.color}20` : '#f3f4f6', color: category.color || '#6b7280' }}>
+                                {category.icon}
+                              </span>
+                            )}
+                            <span className="text-[15px] font-semibold text-gray-900 dark:text-white">{category.name}</span>
+                          </span>
+                        </td>
+                      );
+                      if (col.key === 'description') return <td key={col.key} className="px-4 py-4 text-[15px] text-gray-500 dark:text-gray-400 max-w-[280px] truncate" title={category.description || ''}>{category.description || '—'}</td>;
+                      if (col.key === 'items') {
+                        const n = itemCounts.get(category.name) || 0;
+                        return <td key={col.key} className="px-4 py-4 whitespace-nowrap text-[15px] text-gray-600 dark:text-gray-300 tabular-nums">{n}</td>;
+                      }
+                      if (col.key === 'storage') {
+                        const s = storageFor(category.name);
+                        return (
+                          <td key={col.key} className="px-4 py-4 whitespace-nowrap text-[15px] text-gray-600 dark:text-gray-300">
+                            {s || <span className="text-gray-300 dark:text-gray-600">Not set</span>}
+                          </td>
+                        );
+                      }
                       if (col.key === 'parent') {
                         const parentName = category.parentId ? parentMap.get(category.parentId) : null;
-                        return <td key={col.key} className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{parentName || '-'}</td>;
+                        return <td key={col.key} className="px-4 py-4 whitespace-nowrap text-[15px] text-gray-500">{parentName || '—'}</td>;
                       }
-                      if (col.key === 'displayOrder') return <td key={col.key} className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{category.displayOrder ?? '-'}</td>;
-                      if (col.key === 'createdAt') return <td key={col.key} className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(category.createdAt)}</td>;
-                      return <td key={col.key} className="px-4 py-3 text-sm text-gray-500">-</td>;
+                      if (col.key === 'displayOrder') return <td key={col.key} className="px-4 py-4 whitespace-nowrap text-[15px] text-gray-500 tabular-nums">{category.displayOrder ?? '—'}</td>;
+                      if (col.key === 'createdAt') return <td key={col.key} className="px-4 py-4 whitespace-nowrap text-[15px] text-gray-500">{formatDate(category.createdAt)}</td>;
+                      return <td key={col.key} className="px-4 py-4 text-[15px] text-gray-500">—</td>;
                     })}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleStatus(category)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-250 ${category.status ? 'bg-[#0F9291]' : 'bg-gray-300'}`}
-                      >
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-250 ${category.status ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {/* Click to toggle — the pill is the control, as in the reference */}
+                      <button onClick={() => handleToggleStatus(category)}
+                        title={category.status ? 'Click to deactivate' : 'Click to activate'}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[14px] font-medium transition-colors ${
+                          category.status
+                            ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/25 dark:text-emerald-400'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-[#1F2937] dark:text-gray-400'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${category.status ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                        {category.status ? 'Active' : 'Inactive'}
                       </button>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => { setEditingCategory(category); setShowModal(true); }} className="flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-[#0F9291] hover:bg-[#0F9291]/10 transition-all duration-250" title="Edit"><Edit2 className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => setDeleteTarget(category)} className="flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all duration-250" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
+                    <td className="px-4 py-4 whitespace-nowrap text-right">
+                      <RowActions
+                        category={category}
+                        onEdit={() => { setEditingCategory(category); setShowModal(true); }}
+                        onDelete={() => setDeleteTarget(category)}
+                        onToggle={() => handleToggleStatus(category)}
+                      />
                     </td>
                   </tr>
                 ))}

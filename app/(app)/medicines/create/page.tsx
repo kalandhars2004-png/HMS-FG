@@ -8,7 +8,10 @@ import {
   Search, Building2, Package, Tag, Ruler, Warehouse, Pill, Save, Check, ChevronDown,
   Calculator, Barcode, Clock, Hash, Percent, DollarSign, IndianRupee, Box, ArrowLeft,
 } from '@/components/ui/LucideIcon';
-import { ProductsAPI, CategoriesAPI, BrandsAPI, UnitsAPI, VariantsAPI, SuppliersAPI } from '@/lib/api';
+import { ProductsAPI, CategoriesAPI, BrandsAPI, UnitsAPI, VariantsAPI, SuppliersAPI, RacksAPI } from '@/lib/api';
+import { notifyDataChanged } from '@/lib/boot-cache';
+import { getStockStatus } from '@/lib/stock-status';
+import RackSelect, { rackSpace, type RackRow } from '@/components/medicines/RackSelect';
 import { formatCurrency } from '@/lib/currency';
 import GlobalModal from '@/components/ui/GlobalModal';
 import CategoryCombobox from '@/components/dashboard/CategoryCombobox';
@@ -163,6 +166,8 @@ export default function AddMedicinePage() {
   const [units, setUnits] = useState<any[]>([]);
   const [variants, setVariants] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [racks, setRacks] = useState<RackRow[]>([]);
+  const [rackError, setRackError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingEdit, setIsLoadingEdit] = useState(!!editId);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
@@ -171,6 +176,8 @@ export default function AddMedicinePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const [medicineForm, setMedicineForm] = useState('');
+  /** Free-text entry for a dosage form not in the preset list. */
+  const [customForm, setCustomForm] = useState('');
   const [storageCondition, setStorageCondition] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [medicineNotes, setMedicineNotes] = useState('');
@@ -178,7 +185,6 @@ export default function AddMedicinePage() {
   const [usageInstructions, setUsageInstructions] = useState('');
   const [minOrderQty, setMinOrderQty] = useState('');
   const [maxOrderQty, setMaxOrderQty] = useState('');
-  const [rackLocation, setRackLocation] = useState('');
   const [manufacturer, setManufacturer] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -201,6 +207,7 @@ export default function AddMedicinePage() {
     discountPercentage: '',
     stockQuantity: '',
     lowStockQuantity: '',
+    rackId: '',
     expiryDate: '',
     manufacturingDate: '',
     prescriptionRequired: false,
@@ -213,7 +220,7 @@ export default function AddMedicinePage() {
   const [genericSuggestions, setGenericSuggestions] = useState<string[]>([]);
   const [showGenericSuggestions, setShowGenericSuggestions] = useState(false);
   const [modal, setModal] = useState<{ type: string; isOpen: boolean }>({ type: '', isOpen: false });
-  const [modalForm, setModalForm] = useState({ name: '', description: '' });
+  const [modalForm, setModalForm] = useState({ name: '', description: '', bins: '' });
   const suggestionRef = useRef<HTMLDivElement>(null);
   const genericSuggestionRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +245,7 @@ export default function AddMedicinePage() {
   useEffect(() => {
     Promise.all([
       CategoriesAPI.getAll().then(r => setCategories(r.data || [])).catch(() => {}),
+      RacksAPI.getAll().then(r => { setRacks(r.data || []); setRackError(false); }).catch(() => setRackError(true)),
       BrandsAPI.getAll().then(r => setBrands(r.data || [])).catch(() => {}),
       UnitsAPI.getAll().then(r => setUnits(r.data || [])).catch(() => {}),
       VariantsAPI.getAll().then(r => setVariants(r.data || [])).catch(() => {}),
@@ -253,6 +261,9 @@ export default function AddMedicinePage() {
             sku: p.sku || '',
             barcode: p.barcode || '',
             categoryId: String(p.categoryId || ''),
+            // The product model has no rack link, so an existing medicine cannot
+            // report where it is shelved — the picker starts empty on edit.
+            rackId: '',
             brandId: String(p.brandId || ''),
             unitId: String(p.unitId || ''),
             variantId: String(p.variantId || ''),
@@ -388,7 +399,8 @@ export default function AddMedicinePage() {
       name: '', genericName: '', sku: '', barcode: '', categoryId: '',
       brandId: '', unitId: '', variantId: '', supplierId: '', price: '', mrp: '',
       purchasePrice: '', taxPercentage: '', discountPercentage: '', stockQuantity: '',
-      lowStockQuantity: '', expiryDate: '', manufacturingDate: '', prescriptionRequired: false, description: '',
+      lowStockQuantity: '',
+    rackId: '', expiryDate: '', manufacturingDate: '', prescriptionRequired: false, description: '',
     });
     setImagePreview(null);
     setImageFile(null);
@@ -400,7 +412,6 @@ export default function AddMedicinePage() {
     setUsageInstructions('');
     setMinOrderQty('');
     setMaxOrderQty('');
-    setRackLocation('');
     setManufacturer('');
     setIsActive(true);
     setErrors({});
@@ -408,7 +419,7 @@ export default function AddMedicinePage() {
   };
 
   const openModal = (type: string) => {
-    setModalForm({ name: '', description: '' });
+    setModalForm({ name: '', description: '', bins: '' });
     setModal({ type, isOpen: true });
   };
 
@@ -422,6 +433,12 @@ export default function AddMedicinePage() {
         case 'unit': res = await UnitsAPI.create({ name: modalForm.name, description: modalForm.description }); break;
         case 'variant': res = await VariantsAPI.create({ name: modalForm.name, description: modalForm.description }); break;
         case 'supplier': res = await SuppliersAPI.create({ name: modalForm.name }); break;
+        case 'rack': res = await RacksAPI.create({
+          code: modalForm.name,
+          category: modalForm.description || 'General',
+          bins: Number(modalForm.bins || 0),
+          rowsCount: 0, columns: 0, assignedMedicines: 0, status: 'ACTIVE',
+        }); break;
       }
       const refreshMap: Record<string, any> = {
         category: { api: CategoriesAPI, state: setCategories, key: 'categories' },
@@ -429,6 +446,7 @@ export default function AddMedicinePage() {
         unit: { api: UnitsAPI, state: setUnits, key: 'units' },
         variant: { api: VariantsAPI, state: setVariants, key: 'variants' },
         supplier: { api: SuppliersAPI, state: setSuppliers, key: 'suppliers' },
+        rack: { api: RacksAPI, state: setRacks, key: 'racks' },
       };
       const cfg = refreshMap[modal.type];
       let newData: any[] = [];
@@ -437,6 +455,7 @@ export default function AddMedicinePage() {
       if (modal.type === 'brand') { const created = newData.find((b: any) => b.name === modalForm.name.trim()); if (created) handleChange('brandId', String(created.id)); }
       if (modal.type === 'unit') { const created = newData.find((u: any) => u.name === modalForm.name.trim()); if (created) handleChange('unitId', String(created.id)); }
       if (modal.type === 'supplier') { const created = newData.find((s: any) => s.name === modalForm.name.trim()); if (created) handleChange('supplierId', String(created.id)); }
+      if (modal.type === 'rack') { const created = newData.find((r: any) => r.code === modalForm.name.trim()); if (created) handleChange('rackId', String(created.id)); }
       setToast({ show: true, message: `${modal.type.charAt(0).toUpperCase() + modal.type.slice(1)} added successfully`, type: 'success' });
       setModal({ type: '', isOpen: false });
     } catch (err: any) {
@@ -501,6 +520,17 @@ export default function AddMedicinePage() {
   };
 
   const submitForm = async (fd: FormData) => {
+    // A rack cannot hold more than its free bins — refuse rather than silently overfill.
+    const rack = racks.find(r => String(r.id) === String(formData.rackId));
+    if (rack) {
+      const sp = rackSpace(rack);
+      const qty = Number(formData.stockQuantity || 0);
+      if (qty > sp.free) {
+        setToast({ show: true, message: `${rack.code} has only ${sp.free} space left — cannot assign ${qty}`, type: 'error' });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       if (editId) {
@@ -510,6 +540,18 @@ export default function AddMedicinePage() {
         await ProductsAPI.create(fd);
         setToast({ show: true, message: 'Medicine added successfully', type: 'success' });
       }
+      // Record the space taken on the chosen rack. `assignedMedicines` is the
+      // only occupancy field the Rack model has, so that is what we increment.
+      if (rack && !editId) {
+        const qty = Number(formData.stockQuantity || 0);
+        await RacksAPI.update(String(rack.id), {
+          ...rack,
+          assignedMedicines: Number(rack.assignedMedicines || 0) + qty,
+        }).catch(() => null);
+      }
+
+      // Stock changed — let the dashboard refetch instead of showing pre-save figures.
+      notifyDataChanged();
       setTimeout(() => router.push('/medicines'), 1200);
     } catch (error: any) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to save medicine';
@@ -609,7 +651,6 @@ export default function AddMedicinePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
         {/* ============= MAIN 3-COLUMN GRID ============= */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 
@@ -773,26 +814,53 @@ export default function AddMedicinePage() {
                   <label className={labelClass}>Manufacturer</label>
                   <input type="text" placeholder="e.g. Sun Pharma" className={inputCls('manufacturer')} value={manufacturer} onChange={e => setManufacturer(e.target.value)} />
                 </div>
-                <div>
-                  <label className={labelClass}>Rack Location</label>
-                  <input type="text" placeholder="e.g. Rack A-1, Shelf 3" className={inputCls('rackLocation')} value={rackLocation} onChange={e => setRackLocation(e.target.value)} />
-                </div>
+                <RackSelect
+                  label="Rack Location"
+                  racks={racks}
+                  value={formData.rackId}
+                  onChange={v => handleChange('rackId', v)}
+                  quantity={Number(formData.stockQuantity || 0)}
+                  onAddNew={() => openModal('rack')}
+                  loadError={rackError}
+                  onRetry={() => RacksAPI.getAll()
+                    .then(r => { setRacks(r.data || []); setRackError(false); })
+                    .catch(() => setRackError(true))}
+                />
                 <SearchableSelect label="Unit" value={formData.unitId} onChange={v => handleChange('unitId', v)}
                   options={units} placeholder="Search unit..." onAddNew={() => openModal('unit')} />
                 <div>
                   <label className={labelClass}>Medicine Form</label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2 mb-4">
                     {medicineForms.map(f => (
-                      <button key={f} type="button" onClick={() => setMedicineForm(medicineForm === f ? '' : f)}
-                        className={`relative px-3.5 py-1.5 text-xs font-medium rounded-xl border transition-all duration-200 active:scale-95 ${
+                      <button key={f} type="button" onClick={() => setMedicineForm(f)}
+                        className={`relative px-4 py-2 text-sm font-medium rounded-xl border transition-all duration-200 active:scale-95 ${
                           medicineForm === f
                             ? 'bg-[#0F9291] text-white border-[#0F9291] shadow-sm'
-                            : 'bg-white dark:bg-[#161B22] text-gray-600 dark:text-[#94A3B8] border-gray-200 dark:border-[#273244] hover:border-[#0F9291] hover:text-[#0F9291]'
-                        }`}>
-                        {medicineForm === f && <span className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full border-2 border-[#0F9291] flex items-center justify-center"><Check className="w-2 h-2 text-[#0F9291]" /></span>}
+                            : 'bg-white dark:bg-[#161B22] text-gray-600 dark:text-[#94A3B8] border-gray-200 dark:border-[#273244] hover:border-[#0F9291] hover:text-[#0F9291]'}
+                        `}>
+                        {medicineForm === f && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-white rounded-full border-2 border-[#0F9291] flex items-center justify-center"><Check className="w-2.5 h-2.5 text-[#0F9291]" /></span>}
                         {f}
                       </button>
                     ))}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Add custom form (e.g. Patch, Implant)"
+                      value={customForm}
+                      onChange={e => setCustomForm(e.target.value)}
+                      className={`mt-1 w-full rounded-xl border bg-white dark:bg-[#161B22] px-3 py-2 text-sm text-gray-700 dark:text-[#F8FAFC] outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20 transition-colors`}
+                    />
+                    {customForm.trim() && (
+                      <button type="button"
+                        onClick={() => {
+                          setMedicineForm(customForm.trim());
+                          setCustomForm('');
+                        }}
+                        className="mt-1 rounded-xl border bg-[#0F9291] text-white text-sm px-3 py-1 hover:bg-[#0F9291]/90 transition-colors">
+                        Add
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -910,6 +978,18 @@ export default function AddMedicinePage() {
                 <div>
                   <label className={labelClass}>Low Stock Alert at</label>
                   <input type="number" min="0" placeholder="e.g. 10 units" className={inputCls('lowStockQuantity')} value={formData.lowStockQuantity} onChange={e => handleChange('lowStockQuantity', e.target.value)} />
+                  {/* Same four-tier rule the list, dashboard and badges use */}
+                  {formData.stockQuantity !== '' && (() => {
+                    const st = getStockStatus(Number(formData.stockQuantity || 0), Number(formData.lowStockQuantity) || undefined);
+                    return (
+                      <p className="mt-2 flex items-center gap-2 text-[12px] text-gray-500 dark:text-[#94A3B8]">
+                        Status
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${st.pill}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" /> {st.label}
+                        </span>
+                      </p>
+                    );
+                  })()}
                 </div>
                 <SearchableSelect label="Supplier" value={formData.supplierId} onChange={v => handleChange('supplierId', v)}
                   options={suppliers} placeholder="Search supplier..." onAddNew={() => openModal('supplier')} />
@@ -1032,9 +1112,13 @@ export default function AddMedicinePage() {
           </div>
         </div>
 
-        {/* ============= STICKY BOTTOM ACTION BAR ============= */}
-        <div className="fixed bottom-0 left-0 right-0 z-[1040] bg-white/95 dark:bg-[#161B22]/95 backdrop-blur-lg border-t border-gray-200 dark:border-[#273244] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)] ml-[280px]">
-          <div className="flex items-center justify-between gap-4 px-8 py-4 max-w-[1700px] mx-auto">
+        {/* ============= ACTION BAR — end of form =============
+            Previously `fixed bottom-0 … ml-[280px]`: it floated over the middle
+            of the page and the hardcoded 280px offset no longer matched the
+            sidebar (260px expanded, 72px collapsed), so it sat misaligned too.
+            A static bar after the last field is both correct and self-aligning. */}
+        <div className="mt-8 rounded-2xl bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#273244] shadow-sm">
+          <div className="flex items-center justify-between gap-4 flex-wrap px-6 py-4">
             <div className="flex items-center gap-3">
               <Link href="/medicines"
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm font-medium text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] hover:border-gray-300 dark:hover:border-[#3a3a48] transition-all active:scale-[0.98] no-underline">
@@ -1050,14 +1134,17 @@ export default function AddMedicinePage() {
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border border-[#0F9291]/20 bg-white dark:bg-[#161B22] text-sm font-semibold text-[#0F9291] hover:bg-[#0F9291]/5 transition-all active:scale-[0.98] disabled:opacity-50">
                 <Plus className="w-4 h-4" /> Save &amp; Add Another
               </button>
-              <button type="submit" disabled={isSubmitting}
+<button type="submit" disabled={isSubmitting}
                 className="inline-flex items-center gap-2.5 h-11 px-6 rounded-xl bg-gradient-to-r from-[#0F9291] to-teal-600 text-white text-sm font-semibold hover:shadow-lg hover:shadow-[#0F9291]/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed">
-                {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save Medicine</>}
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
         </div>
-      </form>
 
       {/* ============= MODALS ============= */}
       <InlineModal isOpen={modal.isOpen && modal.type === 'category'} onClose={() => setModal({ type: '', isOpen: false })} title="Add New Category" icon={<Plus className="w-5 h-5" />} onSubmit={handleModalSubmit} submitLabel="Add Category">
@@ -1074,13 +1161,24 @@ export default function AddMedicinePage() {
         </div>
       </InlineModal>
 
-      <InlineModal isOpen={modal.isOpen && modal.type === 'variant'} onClose={() => setModal({ type: '', isOpen: false })} title="Add New Rack / Location" icon={<Plus className="w-5 h-5" />} onSubmit={handleModalSubmit} submitLabel="Add Rack">
+      <InlineModal isOpen={modal.isOpen && modal.type === 'variant'} onClose={() => setModal({ type: '', isOpen: false })} title="Add New Strength / Variant" icon={<Plus className="w-5 h-5" />} onSubmit={handleModalSubmit} submitLabel="Add Variant">
         <div className="space-y-5">
-          <div><label className={labelClass}>Rack Name {requiredStar}</label><input type="text" required placeholder="e.g. Rack A-1, Shelf 3" className={inputClass} value={modalForm.name} onChange={e => setModalForm(p => ({ ...p, name: e.target.value }))} /></div>
+          <div><label className={labelClass}>Strength {requiredStar}</label><input type="text" required placeholder="e.g. 500mg, 10ml" className={inputClass} value={modalForm.name} onChange={e => setModalForm(p => ({ ...p, name: e.target.value }))} /></div>
           <div><label className={labelClass}>Description</label><textarea rows={2} placeholder="Optional" className={textareaClass} value={modalForm.description} onChange={e => setModalForm(p => ({ ...p, description: e.target.value }))} /></div>
         </div>
       </InlineModal>
 
+      <InlineModal isOpen={modal.isOpen && modal.type === 'rack'} onClose={() => setModal({ type: '', isOpen: false })} title="Add New Rack" icon={<Plus className="w-5 h-5" />} onSubmit={handleModalSubmit} submitLabel="Add Rack">
+        <div className="space-y-5">
+          <div><label className={labelClass}>Rack Code {requiredStar}</label><input type="text" required placeholder="e.g. RCK017" className={inputClass} value={modalForm.name} onChange={e => setModalForm(p => ({ ...p, name: e.target.value }))} /></div>
+          <div><label className={labelClass}>Category {requiredStar}</label><input type="text" required placeholder="e.g. Antibiotics" className={inputClass} value={modalForm.description} onChange={e => setModalForm(p => ({ ...p, description: e.target.value }))} /></div>
+          <div>
+            <label className={labelClass}>Total Capacity (bins) {requiredStar}</label>
+            <input type="number" min="1" required placeholder="e.g. 150" className={inputClass} value={modalForm.bins} onChange={e => setModalForm(p => ({ ...p, bins: e.target.value }))} />
+            <p className="text-[12px] text-gray-400 mt-1">How many units this rack can hold. Free space is measured against this.</p>
+          </div>
+        </div>
+      </InlineModal>
       <InlineModal isOpen={modal.isOpen && modal.type === 'supplier'} onClose={() => setModal({ type: '', isOpen: false })} title="Add New Supplier" icon={<Plus className="w-5 h-5" />} onSubmit={handleModalSubmit} submitLabel="Add Supplier">
         <div className="space-y-5">
           <div><label className={labelClass}>Supplier Name {requiredStar}</label><input type="text" required placeholder="e.g. MedLife Distributors" className={inputClass} value={modalForm.name} onChange={e => setModalForm(p => ({ ...p, name: e.target.value }))} /></div>
