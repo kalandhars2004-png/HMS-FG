@@ -52,9 +52,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: res.user?.name || email,
         email: res.user?.email || email,
         role,
+        branchId: res.user?.branchId != null ? String(res.user.branchId) : null,
+        branchName: res.user?.branchName ?? null,
+        organizationId: res.user?.organizationId != null ? String(res.user.organizationId) : null,
       };
       localStorage.setItem('user', JSON.stringify(backendUser));
       localStorage.setItem('authToken', res.token || '');
+      // Branch context: super-admin may have null; branch users get their branch auto-selected
+      if (backendUser.branchId) {
+        localStorage.setItem('selectedBranchId', backendUser.branchId);
+      } else {
+        localStorage.removeItem('selectedBranchId');
+      }
       // Signing in is the definitive start of a session. Clearing here (not just
       // on logout) means the restock warning still appears when the previous
       // session ended some other way — token expiry, a 401 redirect, or a crash.
@@ -70,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('authToken');
+    localStorage.removeItem('selectedBranchId');
     // Per-session UI state must not leak across accounts — the next person to
     // sign in should get their own restock warning.
     sessionStorage.removeItem('ims.stockAlert.seen');

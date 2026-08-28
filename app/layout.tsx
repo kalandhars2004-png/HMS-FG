@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import { BranchProvider } from "@/lib/branch-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { GlobalLoaderProvider } from "@/components/ui/global-loader/GlobalLoaderProvider";
 
 export const metadata: Metadata = {
   title: "Inventory Management",
@@ -22,7 +24,11 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <GlobalLoaderProvider>
+            <AuthProvider>
+              <BranchProvider>{children}</BranchProvider>
+            </AuthProvider>
+          </GlobalLoaderProvider>
         </ThemeProvider>
       </body>
     </html>

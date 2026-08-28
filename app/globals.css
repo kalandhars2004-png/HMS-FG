@@ -381,6 +381,22 @@ html.ims-modal-open .ims-sidebar {
 .animate-icon-fill { animation: icon-fill 250ms cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes indicator-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 .animate-indicator-in { animation: indicator-in 250ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ── Clinical Pulse global loader ── */
+@keyframes loaderStackIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.global-loader-stack { animation: loaderStackIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Lit segment draws in from the left and erases out to the right — continuous sweep */
+@keyframes loaderFlow { 0% { stroke-dashoffset: 1; } 100% { stroke-dashoffset: -1; } }
+.global-loader-flow { animation: loaderFlow 2.6s linear infinite; }
+.global-loader-svg {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.global-loader-dot-glow { filter: drop-shadow(0 0 5px rgba(15, 146, 145, 0.55)); }
+@media (prefers-reduced-motion: reduce) {
+  /* Static full pulse line, no travelling point */
+  .global-loader-flow { animation: none !important; stroke-dashoffset: 0 !important; }
+}
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 

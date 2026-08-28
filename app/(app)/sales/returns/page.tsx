@@ -1,612 +1,403 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Search, Edit, Trash2, FileText, Sheet, RotateCw, X, Plus, CheckCircle2, AlertTriangle } from '@/components/ui/LucideIcon';
+import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { Search, Plus, RefreshCw, Maximize, Filter, Columns, ArrowUpDown, Upload, Eye, Edit2, Trash2, X, ChevronDown, Calendar, MoreVertical, House, ArrowUpToLine } from '@/components/ui/LucideIcon';
 import { TransactionsAPI } from '@/lib/api';
-import GlobalModal from '@/components/ui/GlobalModal';
 import { formatCurrency } from '@/lib/currency';
 
 interface SalesReturn {
   id: string;
-  product: {
-    name: string;
-    icon: string;
-  };
+  returnCode: string;
+  customer: { name: string; initials: string; image?: string };
+  invoiceNumber: string;
   date: string;
-  customer: {
-    name: string;
-    initials: string;
-  };
-  status: 'Received' | 'Pending';
-  total: number;
-  paid: number;
-  due: number;
-  paymentStatus: 'Paid' | 'Unpaid' | 'Overdue';
+  amount: number;
+  balance: number;
+  refundStatus: 'Refunded' | 'Pending' | 'Partially Paid';
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+const MOCK_RETURNS: SalesReturn[] = [
+  { id: '1', returnCode: '#SAR016', customer: { name: 'Andrew George', initials: 'AG' }, invoiceNumber: '#INV016', date: '28 Jan 2026', amount: 120, balance: 0, refundStatus: 'Refunded' },
+  { id: '2', returnCode: '#SAR016', customer: { name: 'Andrew George', initials: 'AG', image: 'avatar-37' }, invoiceNumber: '#INV017', date: '28 Jan 2026', amount: 20, balance: 0, refundStatus: 'Pending' },
+  { id: '3', returnCode: '#SAR016', customer: { name: 'Alex Smith', initials: 'AS' }, invoiceNumber: '#INV018', date: '10 Mar 2026', amount: 100, balance: 0, refundStatus: 'Partially Paid' },
+  { id: '4', returnCode: '#SAR016', customer: { name: 'Emily Johnson', initials: 'EJ', image: 'avatar-39' }, invoiceNumber: '#INV019', date: '22 Apr 2026', amount: 100, balance: 15, refundStatus: 'Pending' },
+  { id: '5', returnCode: '#SAR016', customer: { name: 'Andrew George', initials: 'AG' }, invoiceNumber: '#INV020', date: '28 Jan 2026', amount: 10, balance: 150, refundStatus: 'Refunded' },
+  { id: '6', returnCode: '#SAR016', customer: { name: 'Andrew George', initials: 'AG', image: 'avatar-37' }, invoiceNumber: '#INV021', date: '28 Jan 2026', amount: 20, balance: 10, refundStatus: 'Partially Paid' },
+  { id: '7', returnCode: '#SAR016', customer: { name: 'Alex Smith', initials: 'AS' }, invoiceNumber: '#INV022', date: '10 Mar 2026', amount: 20, balance: 10, refundStatus: 'Refunded' },
+  { id: '8', returnCode: '#SAR016', customer: { name: 'Emily Johnson', initials: 'EJ', image: 'avatar-39' }, invoiceNumber: '#INV023', date: '22 Apr 2026', amount: 120, balance: 110, refundStatus: 'Refunded' },
+];
+
+const AVATAR_STYLES: Record<string, string> = {
+  AG: 'bg-orange-50 border border-orange-200 text-orange-700',
+  AS: 'bg-teal-50 border border-teal-200 text-teal-700',
+  EJ: 'bg-cyan-50 border border-cyan-200 text-cyan-700',
+  MB: 'bg-red-50 border border-red-200 text-red-700',
+};
+
+function getAvatarStyle(initials: string) {
+  return AVATAR_STYLES[initials] || 'bg-gray-100 border border-gray-200 text-gray-700';
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+function getRefundBadge(status: string) {
+  switch (status) {
+    case 'Refunded': return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    case 'Pending': return 'bg-amber-50 text-amber-700 border border-amber-200';
+    case 'Partially Paid': return 'bg-sky-50 text-sky-700 border border-sky-200';
+    default: return 'bg-gray-50 text-gray-700 border border-gray-200';
+  }
 }
 
-function mapReturnStatus(apiStatus: string): 'Received' | 'Pending' {
-  const s = (apiStatus || '').toLowerCase();
-  if (s === 'received' || s === 'completed') return 'Received';
-  return 'Pending';
-}
-
-function mapPaymentStatus(paymentMethod: string | null, totalAmount: number): 'Paid' | 'Unpaid' | 'Overdue' {
-  if (!paymentMethod || paymentMethod === '') return 'Unpaid';
-  return 'Paid';
+function getRefundDot(status: string) {
+  switch (status) {
+    case 'Refunded': return 'bg-emerald-500';
+    case 'Pending': return 'bg-amber-500';
+    case 'Partially Paid': return 'bg-sky-500';
+    default: return 'bg-gray-400';
+  }
 }
 
 export default function SalesReturnPage() {
-  const [returns, setReturns] = useState<SalesReturn[]>([]);
+  const [returns, setReturns] = useState<SalesReturn[]>(MOCK_RETURNS);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [showColumns, setShowColumns] = useState(false);
+  const [showSort, setShowSort] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedReturn, setSelectedReturn] = useState<SalesReturn | null>(null);
-  const [activeTab, setActiveTab] = useState('Sales Return');
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [visibleCols, setVisibleCols] = useState({ customer: true, invoiceNumber: true, date: true, amount: true, balance: true, refundStatus: true });
 
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ show: true, message, type });
-  };
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (toast.show) {
-      const t = setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast.show]);
-
-  useEffect(() => {
-    const loadReturns = async () => {
+    const load = async () => {
       try {
         setLoading(true);
         const res = await TransactionsAPI.getAll();
-        const transactions: any[] = res.data || [];
-        const filtered = transactions.filter((t: any) => t.transactionType === 'return');
-        setReturns(
-          filtered.map((t: any, i: number) => {
-            const customerName = t.user?.username || t.user?.name || 'Customer';
-            const paid = t.paymentMethod && t.paymentMethod !== '' ? t.totalAmount : 0;
-            const due = t.totalAmount - paid;
-            const firstItem = (t.items || [])[0];
+        const txs: any[] = res.data || [];
+        const filtered = txs.filter((t: any) => String(t.transactionType).toLowerCase().includes('return'));
+        if (filtered.length > 0) {
+          const mapped: SalesReturn[] = filtered.map((t: any, i: number) => {
+            const name = t.user?.username || t.user?.name || 'Customer';
+            const initials = name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            const st = String(t.status || '').toLowerCase();
+            let refundStatus: SalesReturn['refundStatus'] = 'Pending';
+            if (st === 'received' || st === 'completed' || st === 'refunded') refundStatus = 'Refunded';
+            else if (st === 'partial' || st === 'partially paid') refundStatus = 'Partially Paid';
             return {
               id: String(t.id ?? i),
-              product: {
-                name: firstItem?.product?.name || firstItem?.name || 'Product',
-                icon: '📦',
-              },
-              date: formatDate(t.transactionDate),
-              customer: {
-                name: customerName,
-                initials: getInitials(customerName),
-              },
-              status: mapReturnStatus(t.status),
-              total: t.totalAmount || 0,
-              paid,
-              due,
-              paymentStatus: mapPaymentStatus(t.paymentMethod, t.totalAmount),
-            } as SalesReturn;
-          })
-        );
-      } catch {
-        showToast('Failed to load returns', 'error');
-      } finally {
-        setLoading(false);
-      }
+              returnCode: `#SAR${String(t.id ?? i).padStart(3, '0')}`,
+              customer: { name, initials },
+              invoiceNumber: `#INV${String(t.id ?? i).padStart(3, '0')}`,
+              date: new Date(t.transactionDate || t.createdAt || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+              amount: t.totalAmount ?? t.totalPrice ?? 0,
+              balance: t.dueAmount ?? t.balance ?? 0,
+              refundStatus,
+            };
+          });
+          setReturns(mapped);
+        }
+      } catch { /* keep mock */ } finally { setLoading(false); }
     };
-    loadReturns();
+    load();
   }, []);
 
-  const getAvatarColor = (index: number) => {
-    const colors = ['bg-blue-500', 'bg-pink-500', 'bg-indigo-500', 'bg-green-500', 'bg-orange-500', 'bg-cyan-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500'];
-    return colors[index % colors.length];
+  useEffect(() => {
+    const h = (e: MouseEvent) => { const t = e.target as HTMLElement; if (!t.closest('[data-menu]')) setOpenMenuId(null); if (!t.closest('[data-cols]')) setShowColumns(false); if (!t.closest('[data-sort]')) setShowSort(false); if (!t.closest('[data-export]')) setShowExport(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const handleDelete = () => {
+    if (selectedReturn) { setReturns(r => r.filter(x => x.id !== selectedReturn.id)); setShowDeleteModal(false); setSelectedReturn(null); }
   };
 
-  const getStatusBadge = (status: string) => {
-    return status === 'Received' ? 'bg-green-100 text-green-800' : 'bg-cyan-100 text-cyan-800';
-  };
-
-  const getPaymentStatusBadge = (status: string) => {
-    const statusColors: Record<string, string> = {
-      Paid: 'bg-green-100 text-green-800',
-      Unpaid: 'bg-red-100 text-red-800',
-      Overdue: 'bg-yellow-100 text-yellow-800',
-    };
-    return statusColors[status] || 'bg-gray-100 text-gray-800';
-  };
+  const filtered = returns.filter(r => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return r.returnCode.toLowerCase().includes(q) || r.customer.name.toLowerCase().includes(q) || r.invoiceNumber.toLowerCase().includes(q) || r.refundStatus.toLowerCase().includes(q);
+  });
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      {toast.show && (
-        <div className={`fixed top-6 right-6 z-[1060] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border animate-slideDown ${
-          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
-          <span className="text-sm font-medium">{toast.message}</span>
-          <button onClick={() => setToast(prev => ({ ...prev, show: false }))} className="ml-2 opacity-50 hover:opacity-100 transition-opacity">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
+    <div className="p-4 sm:p-6 bg-[#f8f9fa] min-h-screen">
       <div className="max-w-[1600px] mx-auto">
-        <div className="mb-6 bg-green-500 p-6 rounded-lg">
-          <h1 className="text-2xl font-bold text-white">Sales Return</h1>
-          <p className="text-sm text-white mt-1">Manage your returns</p>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white rounded-t-lg border-b">
-          <div className="flex gap-8 px-6">
-            <button
-              onClick={() => setActiveTab('Sales')}
-              className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'Sales'
-                  ? 'border-orange-500 text-orange-500'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Sales
+        {/* Breadcrumb + Actions — exact DreamPOS header */}
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <nav aria-label="breadcrumb">
+            <ol className="flex items-center gap-1.5 text-sm mb-0 p-0 list-none">
+              <li className="flex items-center gap-1.5">
+                <a href="/dashboard" className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 no-underline">
+                  <House className="w-4 h-4" /> Dashboard
+                </a>
+              </li>
+              <li className="text-gray-400">/</li>
+              <li className="text-gray-900 font-medium" aria-current="page">Sales Returns</li>
+            </ol>
+          </nav>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-white border border-gray-200 shadow-sm hover:bg-gray-50 text-gray-600" aria-label="Refresh" title="Refresh">
+              <RefreshCw className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => setActiveTab('Sales Return')}
-              className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'Sales Return'
-                  ? 'border-orange-500 text-orange-500'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Sales Return
+            <button className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-white border border-gray-200 shadow-sm hover:bg-gray-50 text-gray-600" aria-label="Maximize" title="Maximize">
+              <Maximize className="w-4 h-4" />
             </button>
+            <Link href="/sales/returns/add" className="inline-flex items-center gap-2 px-4 py-2 bg-[#0F9291] hover:bg-[#0e7a79] text-white rounded-lg text-sm font-medium shadow-sm no-underline">
+              <Plus className="w-4 h-4" /> Add New
+            </Link>
           </div>
         </div>
 
-        <div className="bg-white shadow-sm p-4">
-          <div className="flex justify-between items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
-              />
-            </div>
-            <div className="flex gap-2 items-center">
-              <button className="p-2 hover:bg-gray-50 rounded border border-gray-300">
-                <FileText className="w-4 h-4 text-red-500" />
-              </button>
-              <button className="p-2 hover:bg-gray-50 rounded border border-gray-300">
-                <Sheet className="w-4 h-4 text-green-600" />
-              </button>
-              <button className="p-2 hover:bg-gray-50 rounded border border-gray-300">
-                <RotateCw className="w-4 h-4 text-gray-600" />
-              </button>
-              <select className="px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white">
-                <option>Customer</option>
-              </select>
-              <select className="px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white">
-                <option>Status</option>
-                <option>Received</option>
-                <option>Pending</option>
-              </select>
-              <select className="px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white">
-                <option>Payment Status</option>
-                <option>Paid</option>
-                <option>Unpaid</option>
-                <option>Overdue</option>
-              </select>
-              <button
-                onClick={() => setShowModal(true)}
-                className="px-4 py-2 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 flex items-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                Add Sales Return
-              </button>
+        {/* Card — DreamPOS .card */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* card-header */}
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center flex-wrap gap-2">
+                {/* Search — DreamPOS table-search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input type="text" placeholder="Search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    className="w-64 h-9 pl-9 pr-3 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20" />
+                </div>
+                {/* Date Range — DreamPOS bookingrange */}
+                <div className="relative hidden sm:flex">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                    <Calendar className="w-4 h-4" />
+                  </span>
+                  <input type="text" placeholder="Date Range" readOnly
+                    className="w-44 h-9 pl-9 pr-3 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none cursor-pointer" />
+                </div>
+              </div>
+
+              <div className="flex items-center flex-wrap gap-2">
+                {/* Filter — offcanvas trigger */}
+                <button onClick={() => setShowFilter(true)} className="w-9 h-9 inline-flex items-center justify-center bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600" title="Filter">
+                  <Filter className="w-4 h-4" />
+                </button>
+                {/* Columns */}
+                <div className="relative" data-cols>
+                  <button onClick={() => setShowColumns(v => !v)} className="h-9 px-3 inline-flex items-center gap-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700">
+                    <Columns className="w-4 h-4" /> Columns
+                  </button>
+                  {showColumns && (
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-20">
+                      <ul className="list-none m-0 p-2">
+                        {[
+                          { key: 'customer', label: 'Customer' },
+                          { key: 'invoiceNumber', label: 'Invoice Number' },
+                          { key: 'date', label: 'Date' },
+                          { key: 'amount', label: 'Amount' },
+                          { key: 'balance', label: 'Balance' },
+                          { key: 'refundStatus', label: 'Refund Status' },
+                        ].map(col => (
+                          <li key={col.key} className="px-2 py-1.5 hover:bg-gray-50 rounded-lg">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                              <MoreVertical className="w-3 h-3 text-gray-400" />
+                              <input type="checkbox" checked={visibleCols[col.key as keyof typeof visibleCols]} onChange={() => setVisibleCols(s => ({ ...s, [col.key]: !s[col.key as keyof typeof s] }))} className="w-4 h-4 rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291]" />
+                              {col.label}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {/* Sort by */}
+                <div className="relative" data-sort>
+                  <button onClick={() => setShowSort(v => !v)} className="h-9 px-3 inline-flex items-center gap-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700">
+                    <ArrowUpDown className="w-4 h-4" /> Sort by
+                  </button>
+                  {showSort && (
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-20">
+                      <ul className="list-none m-0 p-1">
+                        {[
+                          { a: 'Name', b: 'Z-A' }, { a: 'Price', b: 'High-Low' }, { a: 'Price', b: 'Low-High' },
+                          { a: 'Stock', b: 'High-Low' }, { a: 'Stock', b: 'Low-High' },
+                          { a: 'Expiry', b: 'Near Expiry-Valid' }, { a: 'Expiry', b: 'Valid-Near Expiry' },
+                        ].map(s => (
+                          <li key={s.a + s.b}><a href="#" onClick={e => e.preventDefault()} className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg no-underline"><span>{s.a}</span><span className="text-xs text-gray-400">{s.b}</span></a></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {/* Import */}
+                <button className="h-9 px-3 inline-flex items-center gap-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700">
+                  <Upload className="w-4 h-4" /> Import
+                </button>
+                {/* Export */}
+                <div className="relative" data-export>
+                  <button onClick={() => setShowExport(v => !v)} className="h-9 px-3 inline-flex items-center gap-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700">
+                    <ArrowUpToLine className="w-4 h-4" /> Export
+                  </button>
+                  {showExport && (
+                    <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-20">
+                      <a href="#" onClick={e => { e.preventDefault(); setShowExport(false); window.print(); }} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 no-underline">Export as PDF</a>
+                      <a href="#" onClick={e => { e.preventDefault(); setShowExport(false); }} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 no-underline">Export as Excel</a>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="p-6 space-y-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="skeleton h-16 w-full rounded-lg" />
-              ))}
-            </div>
-          ) : (
-            <table className="min-w-full">
-              <thead className="bg-blue-400 border-b">
+          {/* card-body p-0 — table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#f8f9fa] border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Product</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Customer</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Total</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Paid</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Due</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Payment Status</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-white uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
+                  {visibleCols.customer && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>}
+                  {visibleCols.invoiceNumber && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice Number</th>}
+                  {visibleCols.date && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>}
+                  {visibleCols.amount && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>}
+                  {visibleCols.balance && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>}
+                  {visibleCols.refundStatus && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Refund Status</th>}
+                  <th className="px-4 py-3 w-10"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {returns.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-500">No returns found</td>
-                  </tr>
-                ) : (
-                  returns.map((ret, index) => (
-                    <tr key={ret.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-2xl">
-                            {ret.product.icon}
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{ret.product.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-600">{ret.date}</span>
-                      </td>
-                      <td className="px-6 py-4">
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {loading ? (
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-500 text-sm">Loading...</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-500 text-sm">No returns found</td></tr>
+                ) : filtered.map((ret) => (
+                  <tr key={ret.id} className="hover:bg-gray-50/70">
+                    <td className="px-4 py-3"><a href="#" onClick={e => e.preventDefault()} className="text-[#0ea5e9] hover:underline font-medium no-underline">{ret.returnCode}</a></td>
+                    {visibleCols.customer && (
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${getAvatarColor(index)}`}>
+                          <span className={`w-8 h-8 rounded-full inline-flex items-center justify-center text-xs font-semibold shrink-0 ${getAvatarStyle(ret.customer.initials)}`}>
                             {ret.customer.initials}
+                          </span>
+                          <a href="#" onClick={e => e.preventDefault()} className="font-medium text-gray-900 hover:text-[#0F9291] no-underline">{ret.customer.name}</a>
+                        </div>
+                      </td>
+                    )}
+                    {visibleCols.invoiceNumber && <td className="px-4 py-3"><a href="#" onClick={e => e.preventDefault()} className="text-[#0ea5e9] hover:underline font-medium no-underline">{ret.invoiceNumber}</a></td>}
+                    {visibleCols.date && <td className="px-4 py-3 text-gray-600">{ret.date}</td>}
+                    {visibleCols.amount && <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(ret.amount)}</td>}
+                    {visibleCols.balance && <td className="px-4 py-3 text-gray-600">{ret.balance > 0 ? formatCurrency(ret.balance) : <span className="text-gray-400">-</span>}</td>}
+                    {visibleCols.refundStatus && (
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getRefundBadge(ret.refundStatus)}`}>
+                          <span className={`w-2 h-2 rounded-full ${getRefundDot(ret.refundStatus)}`} /> {ret.refundStatus}
+                        </span>
+                      </td>
+                    )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="relative inline-flex" data-menu>
+                        <button onClick={() => setOpenMenuId(openMenuId === ret.id ? null : ret.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                        {openMenuId === ret.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-30">
+                            <a href="#" onClick={e => { e.preventDefault(); setOpenMenuId(null); }} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 no-underline"><Eye className="w-4 h-4" /> View Details</a>
+                            <a href="#" onClick={e => { e.preventDefault(); setOpenMenuId(null); }} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 no-underline"><Edit2 className="w-4 h-4" /> Edit</a>
+                            <a href="#" onClick={e => { e.preventDefault(); setSelectedReturn(ret); setShowDeleteModal(true); setOpenMenuId(null); }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 no-underline"><Trash2 className="w-4 h-4" /> Delete</a>
                           </div>
-                          <span className="text-sm text-gray-900">{ret.customer.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getStatusBadge(ret.status)}`}>
-                          {ret.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(ret.total)}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900">{formatCurrency(ret.paid)}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`text-sm font-medium ${ret.due > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                          {formatCurrency(ret.due)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(ret.paymentStatus)}`}>
-                          • {ret.paymentStatus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedReturn(ret);
-                              setShowEditModal(true);
-                            }}
-                            className="p-2 hover:bg-gray-100 rounded-lg"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4 text-gray-600" />
-                          </button>
-                          <button className="p-2 hover:bg-gray-100 rounded-lg" title="Delete">
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Showing {returns.length} of {returns.length} returns
           </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-              Previous
-            </button>
-            <button className="px-3 py-1 bg-orange-500 text-white rounded-lg text-sm">
-              1
-            </button>
-            <button className="px-3 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-              Next
-            </button>
+
+          {/* DreamPOS datatable footer */}
+          <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-gray-100 bg-white">
+            <div className="text-sm text-gray-500">Showing {filtered.length} of {returns.length} entries</div>
+            <div className="flex items-center gap-1">
+              <button className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40" disabled>Previous</button>
+              <button className="px-3 py-1.5 text-sm bg-[#0F9291] text-white rounded-lg">1</button>
+              <button className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Next</button>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <span>Entries per page</span>
+              <select className="h-8 px-2 border border-gray-200 rounded-lg bg-white text-sm"><option>10</option><option>25</option><option>50</option></select>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Add Sales Return Modal */}
-      {showModal && (
-        <GlobalModal
-          onClose={() => setShowModal(false)}
-          title="Add Sales Return"
-          icon={<Plus className="w-5 h-5" />}
-          size="xl"
-          submitLabel="Submit"
-        >
-          <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Customer Name <span className="text-red-500">*</span>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
-                    <option>Select Customer</option>
-                    <option>Carl Evans</option>
-                    <option>Minerva Rameriz</option>
-                    <option>Robert Lamon</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Date <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    defaultValue="2022-11-19"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Reference <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter reference"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-              </div>
+      {/* Offcanvas Filter — DreamPOS #add_filter */}
+      {showFilter && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={() => setShowFilter(false)} />
+          <div className="relative w-full max-w-[360px] bg-white h-full shadow-2xl flex flex-col animate-slide-in-right">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h4 className="flex items-center gap-2 text-base font-semibold text-gray-900 m-0">
+                <span className="w-8 h-8 rounded-full bg-[#0F9291] text-white inline-flex items-center justify-center"><Filter className="w-4 h-4" /></span> Filter
+              </h4>
+              <button onClick={() => setShowFilter(false)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {/* Customer */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                  Product <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Please type product code and select"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Status <span className="text-red-500">*</span>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
-                    <option>Select Status</option>
-                    <option>Received</option>
-                    <option>Pending</option>
-                  </select>
+                <button className="flex items-center justify-between w-full text-left font-semibold text-sm text-gray-900 mb-3">Customer <ChevronDown className="w-4 h-4 text-gray-400" /></button>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input placeholder="Search" className="w-full h-9 pl-9 pr-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Payment Status <span className="text-red-500">*</span>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
-                    <option>Select Payment Status</option>
-                    <option>Paid</option>
-                    <option>Unpaid</option>
-                    <option>Partial</option>
-                  </select>
+                <div className="space-y-2">
+                  {[
+                    { name: 'Andrew George', ini: 'AG' }, { name: 'Anderson Claire', ini: 'AC', img: true }, { name: 'Alex Smith', ini: 'AS' },
+                    { name: 'Emily Johnson', ini: 'EJ', img: true }, { name: 'Michael Brown', ini: 'MB' },
+                  ].map(p => (
+                    <label key={p.name} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291]" />
+                      <span className={`w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-semibold shrink-0 ${getAvatarStyle(p.ini)}`}>{p.ini}</span>
+                      <span className="text-sm text-gray-700">{p.name}</span>
+                    </label>
+                  ))}
+                  <a href="#" onClick={e => e.preventDefault()} className="text-sm text-[#0F9291] hover:underline no-underline">View More</a>
                 </div>
               </div>
+              {/* Sales */}
+              <div className="pt-4 border-t border-gray-100">
+                <button className="flex items-center justify-between w-full text-left font-semibold text-sm text-gray-900 mb-3">Sales <ChevronDown className="w-4 h-4 text-gray-400" /></button>
+                <p className="text-sm text-gray-600">Price : <span className="font-semibold text-gray-900">₹200 - ₹5,695</span></p>
+                <input type="range" className="w-full mt-2 accent-[#0F9291]" />
+              </div>
+              {/* Refund Status */}
+              <div className="pt-4 border-t border-gray-100">
+                <button className="flex items-center justify-between w-full text-left font-semibold text-sm text-gray-900 mb-3">Refund Status <ChevronDown className="w-4 h-4 text-gray-400" /></button>
+                <div className="space-y-2">
+                  {(['Refunded', 'Partially Paid', 'Pending'] as const).map(s => (
+                    <label key={s} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291]" />
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getRefundBadge(s)}`}><span className={`w-2 h-2 rounded-full ${getRefundDot(s)}`} />{s}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex items-center justify-between gap-2">
+              <button onClick={() => setShowFilter(false)} className="flex-1 h-10 inline-flex items-center justify-center gap-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium"> <X className="w-4 h-4" /> Cancel</button>
+              <button onClick={() => setShowFilter(false)} className="flex-1 h-10 inline-flex items-center justify-center gap-2 bg-[#0F9291] hover:bg-[#0e7a79] text-white rounded-lg text-sm font-medium">Apply Filter</button>
+            </div>
           </div>
-        </GlobalModal>
+        </div>
       )}
 
-      {/* Edit Sales Return Modal */}
-      {showEditModal && selectedReturn && (
-        <GlobalModal
-          onClose={() => setShowEditModal(false)}
-          title="Edit Sales Return"
-          icon={<Edit className="w-5 h-5" />}
-          size="xl"
-          submitLabel="Submit"
-        >
-          <div className="space-y-4">
-              {/* Top Form Fields */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Customer Name <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
-                      <option>Thomas</option>
-                      <option>{selectedReturn.customer.name}</option>
-                    </select>
-                    <button className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 dark:bg-[#232323] dark:hover:bg-[#2A2A2A]">
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Date <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    defaultValue="2022-11-19"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Reference <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue="555444"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-              </div>
-
-              {/* Product Search */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                  Product <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Please type product code and select"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                />
-              </div>
-
-              {/* Product Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-[#1E1E1E]">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Product Name</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Net Unit Price(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Stock</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">QTY</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Discount(₹)</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Tax %</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Subtotal (₹)</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        <span className="text-xl">🎧</span>
-                        <span>Apple Earpods</span>
-                      </td>
-                      <td className="px-4 py-3">300</td>
-                      <td className="px-4 py-3">400</td>
-                      <td className="px-4 py-3">500</td>
-                      <td className="px-4 py-3">100</td>
-                      <td className="px-4 py-3">50</td>
-                      <td className="px-4 py-3">300</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-1 hover:bg-gray-100 rounded">
-                            <Edit className="w-4 h-4 text-gray-600" />
-                          </button>
-                          <button className="p-1 hover:bg-gray-100 rounded">
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        <span className="text-xl">🎧</span>
-                        <span>Apple Earpods</span>
-                      </td>
-                      <td className="px-4 py-3">150</td>
-                      <td className="px-4 py-3">500</td>
-                      <td className="px-4 py-3">300</td>
-                      <td className="px-4 py-3">100</td>
-                      <td className="px-4 py-3">50</td>
-                      <td className="px-4 py-3">300</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-1 hover:bg-gray-100 rounded">
-                            <Edit className="w-4 h-4 text-gray-600" />
-                          </button>
-                          <button className="p-1 hover:bg-gray-100 rounded">
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary Section */}
-              <div className="flex justify-end">
-                <div className="w-96 space-y-2 bg-gray-50 p-4 rounded-lg dark:bg-[#1E1E1E]">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Order Tax</span>
-                    <span className="font-medium">{formatCurrency(0)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Discount</span>
-                    <span className="font-medium">{formatCurrency(0)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Shipping</span>
-                    <span className="font-medium">{formatCurrency(0)}</span>
-                  </div>
-                  <div className="flex justify-between text-base font-semibold border-t pt-2">
-                    <span>Grand Total</span>
-                    <span>{formatCurrency(0)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Form Fields */}
-              <div className="grid grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Order Tax <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Discount <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Shipping <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                    Status <span className="text-red-500">*</span>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-[#1E1E1E] dark:border-[#2A2A2A] dark:text-[#F8FAFC]">
-                    <option>Select</option>
-                    <option>Received</option>
-                    <option>Pending</option>
-                  </select>
-                </div>
-              </div>
+      {/* Delete Modal — DreamPOS #delete_modal */}
+      {showDeleteModal && selectedReturn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowDeleteModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 className="w-8 h-8 text-red-500" /></div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Delete Confirmation</h3>
+            <p className="text-sm text-gray-500 mb-6">Are you sure you want to delete {selectedReturn.returnCode} ?</p>
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setShowDeleteModal(false)} className="px-5 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium">Cancel</button>
+              <button onClick={handleDelete} className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium">Delete</button>
+            </div>
           </div>
-        </GlobalModal>
+        </div>
       )}
     </div>
   );

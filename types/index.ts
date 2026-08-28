@@ -5,6 +5,31 @@ export interface User {
   username: string;
   email: string;
   role: string;
+  branchId?: string | null;
+  branchName?: string | null;
+  organizationId?: string | null;
+}
+
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  type: 'RETAIL' | 'WAREHOUSE' | 'CENTRAL_WAREHOUSE';
+  status: 'ACTIVE' | 'DISABLED' | 'ARCHIVED';
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  phone?: string;
+  email?: string;
+  taxNumber?: string;
+  operatingHours?: string;
+  managerId?: string | null;
+  managerName?: string | null;
+  contactPerson?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Product {

@@ -1,4 +1,6 @@
 // API configuration for Spring Boot REST API
+import { notifyLoaderBegin, notifyLoaderEnd, isSilentScopeActive } from '@/components/ui/global-loader/loader-bridge';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
 
 // Spring Boot Response wrapper: { status, message, data?, categories?, category?, ... }
@@ -17,32 +19,60 @@ export class ApiClient {
     return localStorage.getItem('authToken');
   }
 
+  private static getBranchId(): string | null {
+    if (typeof window === 'undefined') return null;
+    // Branch context is stored by branch-context; fallback to user.branchId
+    const ctxBranch = localStorage.getItem('selectedBranchId');
+    if (ctxBranch) return ctxBranch;
+    try {
+      const u = localStorage.getItem('user');
+      if (u) {
+        const parsed = JSON.parse(u);
+        return parsed.branchId ?? null;
+      }
+    } catch {}
+    return null;
+  }
+
   private static async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
     const token = this.getAuthToken();
+    const branchId = this.getBranchId();
     const isFormData = options.body instanceof FormData;
     const headers: Record<string, string> = {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers as Record<string, string>),
     };
+    // Opt out of the global overlay with { headers: { 'X-Silent': '1' } } or by
+    // wrapping the call in beginSilentScope()/endSilentScope() — used by
+    // background polling so it never flashes over user actions.
+    const silent = headers['X-Silent'] === '1' || isSilentScopeActive();
+    delete headers['X-Silent'];
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (branchId) headers['X-Branch-Id'] = String(branchId);
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+    if (!silent) notifyLoaderBegin();
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
 
-    if (!response.ok) {
-      if (response.status === 401 && typeof window !== 'undefined') {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-        sessionStorage.removeItem('ims.stockAlert.seen');
-        window.location.href = '/login';
+      if (!response.ok) {
+        if (response.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          sessionStorage.removeItem('ims.stockAlert.seen');
+          window.location.href = '/login';
+        }
+        const body = await response.text();
+        throw new Error(body || `API Error: ${response.status}`);
       }
-      const body = await response.text();
-      throw new Error(body || `API Error: ${response.status}`);
-    }
 
-    return response.json();
+      return response.json();
+    } finally {
+      // Always release — success, error, or network failure never leave the loader stuck.
+      if (!silent) notifyLoaderEnd();
+    }
   }
 
   static get<T>(endpoint: string): Promise<T> {
@@ -261,7 +291,7 @@ export const UsersAPI = {
     return extractSingle(res, 'user');
   },
 };
-interface UserResponse { id: number; name: string; email: string; role: string; phoneNumber?: string; }
+interface UserResponse { id: number; name: string; email: string; role: string; phoneNumber?: string; branchId?: number | null; branchName?: string | null; organizationId?: number | null; }
 
 // ---- Stock Transfers ----
 export const StockTransfersAPI = {
@@ -326,6 +356,25 @@ export const BatchesAPI = {
     return { data: extractList(res, 'batches') };
   },
 };
+// ---- Customers (Branch-aware §24) ----
+export const CustomersAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/customers/all');
+    return { data: extractList(res, 'customers') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/customers/${id}`);
+    return extractSingle(res, 'customer');
+  },
+  getByBranch: async (branchId: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/customers/branch/${branchId}`);
+    return { data: extractList(res, 'customers') };
+  },
+  create: (data: any) => ApiClient.post('/customers/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/customers/update/${id}`, data),
+  delete: (id: string) => ApiClient.delete(`/customers/delete/${id}`),
+};
+
 // ---- Sales Orders ----
 export const InvoicesAPI = {
   getAll: async () => {
@@ -460,4 +509,44 @@ export const AuditAPI = {
     return { data: extractList(res, 'auditLogs') };
   },
   cleanOldLogs: (days: number) => ApiClient.delete(`/audit/clean?days=${days}`),
+};
+
+// ---- Branches ----
+export const BranchesAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/branches/all');
+    return { data: extractList(res, 'branches') };
+  },
+  getActive: async () => {
+    const res = await ApiClient.get<ApiResponse>('/branches/active');
+    return { data: extractList(res, 'branches') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/branches/${id}`);
+    return extractSingle(res, 'branch');
+  },
+  create: (data: any) => ApiClient.post('/branches/add', data),
+  update: (id: string, data: any) => ApiClient.put(`/branches/update/${id}`, data),
+  disable: (id: string) => ApiClient.put(`/branches/disable/${id}`, {}),
+  archive: (id: string) => ApiClient.put(`/branches/archive/${id}`, {}),
+  assignManager: (branchId: string, managerId: string) => ApiClient.put(`/branches/${branchId}/manager/${managerId}`, {}),
+  removeManager: (branchId: string) => ApiClient.delete(`/branches/${branchId}/manager`),
+};
+
+// ---- Stock Movements (Inventory Logs) ----
+export const StockMovementsAPI = {
+  getAll: async (params?: { page?: number; size?: number; searchText?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.page !== undefined) qs.set('page', String(params.page));
+    if (params?.size !== undefined) qs.set('size', String(params.size));
+    if (params?.searchText) qs.set('searchText', params.searchText);
+    const query = qs.toString();
+    const res = await ApiClient.get<ApiResponse>(`/stock-movements/all${query ? `?${query}` : ''}`);
+    return {
+      data: extractList(res, 'stockMovements'),
+      totalPages: res.totalPages ?? 1,
+      totalElements: res.totalElements ?? 0,
+      currentPage: res.currentPage ?? 0,
+    };
+  },
 };

@@ -9,12 +9,14 @@ import { formatCurrency } from '@/lib/currency';
 import { getStockStatus, STOCK_STATUS_LABELS, type StockStatusMeta } from '@/lib/stock-status';
 import {
   Search, Edit, Trash2, Timer, ScanBarcode,
-  RotateCw, Plus, Maximize, EllipsisVertical,
+  RotateCw, Plus, Maximize, EllipsisVertical, ArrowUpDown, Check, Columns,
   House, X, AlertTriangle, CheckCircle2, Pill, Ban, Package as PackageIcon, Calendar, ArrowUpToLine,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
 import DropdownMenu, { DropdownItem, DropdownSeparator } from '@/components/ui/DropdownMenu';
 import MedicineDetailsDialog from '@/components/medicines/MedicineDetailsDialog';
+import { beginSilentScope, endSilentScope } from '@/components/ui/global-loader/loader-bridge';
+import { useBranch } from '@/lib/branch-context';
 
 interface MedicineDisplay {
   id: string;
@@ -48,6 +50,28 @@ function getStats(medicines: MedicineDisplay[]) {
   ];
 }
 
+const COLUMN_DEFS = [
+  { key: 'sku', label: 'SKU' },
+  { key: 'name', label: 'Item' },
+  { key: 'category', label: 'Category' },
+  { key: 'quantity', label: 'Quantity' },
+  { key: 'price', label: 'Price' },
+  { key: 'stockValue', label: 'Stock Value' },
+  { key: 'stockStatus', label: 'Stock Status' },
+  { key: 'expiry', label: 'Expiry Date' },
+];
+
+const SORT_OPTIONS = [
+  { key: 'name-asc', label: 'Item Name', badge: 'A-Z' },
+  { key: 'name-desc', label: 'Item Name', badge: 'Z-A' },
+  { key: 'qty-desc', label: 'Quantity', badge: '9-1' },
+  { key: 'qty-asc', label: 'Quantity', badge: '1-9' },
+  { key: 'price-desc', label: 'Price', badge: '9-1' },
+  { key: 'price-asc', label: 'Price', badge: '1-9' },
+  { key: 'expiry-asc', label: 'Expiry Date', badge: 'Soonest' },
+  { key: 'expiry-desc', label: 'Expiry Date', badge: 'Latest' },
+];
+
 /** Soft pill hues per dosage form, matching the reference table. */
 const CATEGORY_PILL: Record<string, string> = {
   tablet: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
@@ -79,6 +103,7 @@ function extractGenericName(name: string): string {
 
 export default function MedicinesPage() {
   const router = useRouter();
+  const { selectedBranchId, selectedBranch, isSuperAdmin } = useBranch();
   const [medicines, setMedicines] = useState<MedicineDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,6 +118,11 @@ export default function MedicinesPage() {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string[]>([]);
   const [filterStockStatus, setFilterStockStatus] = useState<string[]>([]);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [sortBy, setSortBy] = useState('default');
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(COLUMN_DEFS.map(c => c.key));
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [barcodeTarget, setBarcodeTarget] = useState<MedicineDisplay | null>(null);
   const menuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -133,10 +163,12 @@ export default function MedicinesPage() {
 
   useEffect(() => {
     loadMedicines();
-    const onFocus = () => { if (!isLoading) loadMedicines(); };
+    const onFocus = () => { if (!isLoading) { beginSilentScope(); Promise.resolve(loadMedicines()).finally(endSilentScope); } };
+    const onBranch = () => loadMedicines();
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [loadMedicines]);
+    window.addEventListener('ims:branch-changed', onBranch);
+    return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('ims:branch-changed', onBranch); };
+  }, [loadMedicines, selectedBranchId]);
 
 
   useEffect(() => {
@@ -145,6 +177,17 @@ export default function MedicinesPage() {
       return () => clearTimeout(t);
     }
   }, [toast.show]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }, []);
+
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
 
   const filtered = medicines.filter(m => {
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -160,8 +203,25 @@ export default function MedicinesPage() {
 
   const uniqueCategories = [...new Set(medicines.map(m => m.category))].sort();
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  /** Rows without an expiry sort as if they never expire. */
+  const expiryTs = (m: MedicineDisplay) => (m.expiryRaw ? new Date(m.expiryRaw).getTime() : Infinity);
+
+  const sortedList = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'name-asc': return a.name.localeCompare(b.name);
+      case 'name-desc': return b.name.localeCompare(a.name);
+      case 'qty-asc': return a.quantity - b.quantity;
+      case 'qty-desc': return b.quantity - a.quantity;
+      case 'price-asc': return a.price - b.price;
+      case 'price-desc': return b.price - a.price;
+      case 'expiry-asc': return expiryTs(a) - expiryTs(b);
+      case 'expiry-desc': return expiryTs(b) - expiryTs(a);
+      default: return 0; // backend order
+    }
+  });
+
+  const totalPages = Math.ceil(sortedList.length / pageSize);
+  const paginated = sortedList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const stats = getStats(medicines);
 
   /** Exports exactly what the user is looking at — filters and search included. */
@@ -266,13 +326,20 @@ export default function MedicinesPage() {
               <span className="text-gray-300 dark:text-[#4B5563] mx-1">/</span>
             </li>
             <li className="text-gray-900 dark:text-[#F8FAFC] font-medium" aria-current="page">Medicine List</li>
+            {selectedBranch ? (
+              <li className="ml-2 hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0F9291]/10 text-[#0F9291] text-xs font-semibold border border-[#0F9291]/20">
+                {selectedBranch.name} · {selectedBranch.code}
+              </li>
+            ) : isSuperAdmin ? (
+              <li className="ml-2 hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-200">All Branches</li>
+            ) : null}
           </ol>
         </nav>
         <div className="flex items-center gap-2">
           <button onClick={loadMedicines} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm" title="Refresh">
             <RotateCw className="w-4 h-4" />
           </button>
-          <button className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm" title="Maximize">
+          <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-500 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm" title={isFullscreen ? 'Exit full screen' : 'Maximize'}>
             <Maximize className="w-4 h-4" />
           </button>
           <Link href="/medicines/create"
@@ -356,20 +423,40 @@ export default function MedicinesPage() {
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
               </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 4h6m-6 4h6m-6 4h6m-3 4v4m-4 0h8" /></svg> Columns
+              <button
+                ref={el => { menuAnchors.current['toolbar-columns'] = el; }}
+                onClick={() => { setColumnsOpen(o => !o); setSortOpen(false); }}
+                aria-haspopup="menu"
+                aria-expanded={columnsOpen}
+                className={`inline-flex items-center gap-2 px-3 h-9 rounded-xl border transition-all duration-250 shadow-sm whitespace-nowrap ${
+                  columnsOpen
+                    ? 'bg-[#0F9291] text-white border-[#0F9291]'
+                    : 'bg-white dark:bg-[#161B22] text-gray-600 dark:text-[#94A3B8] border-gray-200 dark:border-[#273244] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
+                }`}
+              >
+                <Columns className="w-4 h-4" /> Columns
+                {visibleColumns.length < COLUMN_DEFS.length && (
+                  <span className={`text-[10px] font-bold rounded-full min-w-4 px-1 ${columnsOpen ? 'bg-white/25 text-white' : 'bg-[#0F9291]/10 text-[#0F9291]'}`}>{visibleColumns.length}</span>
+                )}
               </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7h6l3-4 3 4h6l-3 4 3 4h-6l-3 4-3-4H3l3-4-3-4z" /></svg> Sort by
+              <button
+                ref={el => { menuAnchors.current['toolbar-sort'] = el; }}
+                onClick={() => { setSortOpen(o => !o); setColumnsOpen(false); }}
+                aria-haspopup="menu"
+                aria-expanded={sortOpen}
+                className={`inline-flex items-center gap-2 px-3 h-9 rounded-xl border transition-all duration-250 shadow-sm whitespace-nowrap ${
+                  sortOpen || sortBy !== 'default'
+                    ? 'bg-[#0F9291] text-white border-[#0F9291]'
+                    : 'bg-white dark:bg-[#161B22] text-gray-600 dark:text-[#94A3B8] border-gray-200 dark:border-[#273244] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
+                }`}
+              >
+                <ArrowUpDown className="w-4 h-4" /> Sort by
               </button>
               <button
                 onClick={exportCsv}
                 className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap"
               >
                 <ArrowUpToLine className="w-4 h-4" /> Export
-              </button>
-              <button className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250 shadow-sm whitespace-nowrap">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Export
               </button>
             </div>
           </div>
@@ -434,14 +521,14 @@ export default function MedicinesPage() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50/80 dark:bg-[#1A2232] border-b border-gray-100 dark:border-[#273244]">
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">SKU</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Item</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Category</th>
-                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Quantity</th>
-                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Price</th>
-                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Value</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Status</th>
-                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Expiry Date</th>
+                    {visibleColumns.includes('sku') && <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">SKU</th>}
+                    {visibleColumns.includes('name') && <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Item</th>}
+                    {visibleColumns.includes('category') && <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Category</th>}
+                    {visibleColumns.includes('quantity') && <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Quantity</th>}
+                    {visibleColumns.includes('price') && <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Price</th>}
+                    {visibleColumns.includes('stockValue') && <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Value</th>}
+                    {visibleColumns.includes('stockStatus') && <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Stock Status</th>}
+                    {visibleColumns.includes('expiry') && <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">Expiry Date</th>}
                     <th className="px-4 py-3.5 text-right text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider whitespace-nowrap"></th>
                   </tr>
                 </thead>
@@ -462,46 +549,62 @@ export default function MedicinesPage() {
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsId(m.id); } }}
                           className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-[#1F2937]/50 transition-colors duration-250 focus:outline-none focus-visible:bg-[#0F9291]/5"
                         >
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="text-[#0F9291] text-sm font-medium">{m.sku}</span>
-                          </td>
+                          {visibleColumns.includes('sku') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              <span className="text-[#0F9291] text-sm font-medium">{m.sku}</span>
+                            </td>
+                          )}
                           {/* Generic name sits under the item rather than in its own
                               column — it is derived from the name, so a separate
                               column repeated most of the same string. */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-[#1F2937] text-xs shrink-0">{icon}</span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-medium text-gray-900 dark:text-[#F8FAFC] truncate">{m.name}</span>
-                                {m.genericName && m.genericName !== m.name && (
-                                  <span className="block text-xs text-gray-400 dark:text-[#64748B] truncate">{m.genericName}</span>
-                                )}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${categoryPill(m.category)}`}>
-                              {m.category}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC]">{m.quantity}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.price)}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.stockValue)}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${ss.pill}`}>
-                              {!ss.needsAttention ? (
-                                <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
-                              ) : (
-                                /* Only unhealthy stock animates, so the eye is drawn to real problems */
-                                <span className="status-dot w-1.5 h-1.5">
-                                  <span className={`ring ${ss.dot}`} />
-                                  <span className={`dot w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                          {visibleColumns.includes('name') && (
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-[#1F2937] text-xs shrink-0">{icon}</span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-medium text-gray-900 dark:text-[#F8FAFC] truncate">{m.name}</span>
+                                  {m.genericName && m.genericName !== m.name && (
+                                    <span className="block text-xs text-gray-400 dark:text-[#64748B] truncate">{m.genericName}</span>
+                                  )}
                                 </span>
-                              )}
-                              {m.stockStatus}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.expiryDate}</td>
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes('category') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${categoryPill(m.category)}`}>
+                                {m.category}
+                              </span>
+                            </td>
+                          )}
+                          {visibleColumns.includes('quantity') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC]">{m.quantity}</td>
+                          )}
+                          {visibleColumns.includes('price') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.price)}</td>
+                          )}
+                          {visibleColumns.includes('stockValue') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right tabular-nums text-gray-900 dark:text-[#F8FAFC] font-medium">{formatCurrency(m.stockValue)}</td>
+                          )}
+                          {visibleColumns.includes('stockStatus') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${ss.pill}`}>
+                                {!ss.needsAttention ? (
+                                  <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                                ) : (
+                                  /* Only unhealthy stock animates, so the eye is drawn to real problems */
+                                  <span className="status-dot w-1.5 h-1.5">
+                                    <span className={`ring ${ss.dot}`} />
+                                    <span className={`dot w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                                  </span>
+                                )}
+                                {m.stockStatus}
+                              </span>
+                            </td>
+                          )}
+                          {visibleColumns.includes('expiry') && (
+                            <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-500 dark:text-[#94A3B8]">{m.expiryDate}</td>
+                          )}
                           <td className="px-4 py-3.5 whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                             <button
                               ref={el => { menuAnchors.current[m.id] = el; }}
@@ -538,8 +641,7 @@ export default function MedicinesPage() {
               open={!!openDropdown}
               onClose={() => setOpenDropdown(null)}
               anchorEl={openDropdown ? menuAnchors.current[openDropdown] ?? null : null}
-            >
-              {(() => {
+            >              {(() => {
                 const row = paginated.find(x => x.id === openDropdown);
                 if (!row) return null;
                 return (
@@ -564,6 +666,51 @@ export default function MedicinesPage() {
                   </>
                 );
               })()}
+            </DropdownMenu>
+
+            {/* Toolbar: column visibility + sort order */}
+            <DropdownMenu
+              open={columnsOpen}
+              onClose={() => setColumnsOpen(false)}
+              anchorEl={menuAnchors.current['toolbar-columns'] ?? null}
+              width={210}
+            >
+              {COLUMN_DEFS.map(c => (
+                <label key={c.key} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors duration-150 text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937]">
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.includes(c.key)}
+                    onChange={() => setVisibleColumns(v => v.includes(c.key) ? v.filter(k => k !== c.key) : [...v, c.key])}
+                    className="rounded border-gray-300 dark:border-[#273244] text-[#0F9291] focus:ring-[#0F9291] w-3.5 h-3.5"
+                  />
+                  {c.label}
+                </label>
+              ))}
+            </DropdownMenu>
+
+            <DropdownMenu
+              open={sortOpen}
+              onClose={() => setSortOpen(false)}
+              anchorEl={menuAnchors.current['toolbar-sort'] ?? null}
+              width={240}
+            >
+              {SORT_OPTIONS.map(s => (
+                <button
+                  key={s.key}
+                  role="menuitem"
+                  onClick={() => { setSortBy(s.key); setCurrentPage(1); setSortOpen(false); }}
+                  className={`flex items-center justify-between gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-left transition-colors duration-150 ${
+                    sortBy === s.key
+                      ? 'text-[#0F9291] font-semibold bg-[#0F9291]/5'
+                      : 'text-gray-600 dark:text-[#94A3B8] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
+                  }`}
+                >
+                  <span>{s.label}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    sortBy === s.key ? 'bg-[#0F9291]/10 text-[#0F9291]' : 'bg-gray-100 dark:bg-[#273244] text-gray-400 dark:text-[#64748B]'
+                  }`}>{s.badge}</span>
+                </button>
+              ))}
             </DropdownMenu>
 
             {/* Pagination */}

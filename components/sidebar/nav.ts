@@ -10,7 +10,7 @@ import {
   Building2, FileText, Component, Archive,
 } from '@/components/ui/LucideIcon';
 
-export type Role = 'admin' | 'manager' | 'pharmacist' | 'cashier';
+export type Role = 'admin' | 'manager' | 'pharmacist' | 'cashier' | 'super_admin' | 'branch_manager' | 'inventory_staff' | 'accountant';
 
 export type BadgeVariant = 'new' | 'hot' | 'count' | 'sync' | 'expired' | 'low';
 
@@ -46,6 +46,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: LayoutDashboard,
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'D' },
+      { name: 'Branches', href: '/branches', icon: Building2, roles: ['super_admin', 'admin', 'branch_manager', 'manager'] as Role[] },
     ],
   },
   {
@@ -124,6 +125,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Building2,
     roles: ['admin'],
     items: [
+      { name: 'Branches', href: '/settings/branches', icon: Building2, roles: ['super_admin', 'admin'] as Role[] },
       { name: 'Business', href: '/settings/business', icon: Building2 },
       { name: 'Billing', href: '/settings/taxes', icon: FileText },
       { name: 'System Integrations', href: '/settings/integrations', icon: Component },
@@ -134,17 +136,31 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator',
+  super_admin: 'Super Admin',
+  branch_manager: 'Branch Manager',
   manager: 'Manager',
   pharmacist: 'Pharmacist',
   cashier: 'Cashier',
+  inventory_staff: 'Inventory Staff',
+  accountant: 'Accountant',
 };
 
+function isSuper(role?: string) {
+  return role === 'admin' || role === 'super_admin';
+}
 export function canSeeSection(section: NavSection, role?: string): boolean {
   if (!section.roles) return true;
-  return section.roles.includes(role as Role) || role === 'admin';
+  const r = (role || '').toLowerCase() as Role;
+  if (isSuper(r)) return true;
+  // branch_manager is alias for manager
+  if (r === 'branch_manager' && section.roles.includes('manager')) return true;
+  return section.roles.includes(r);
 }
 
 export function canSeeItem(item: NavItem, role?: string): boolean {
   if (!item.roles) return true;
-  return item.roles.includes(role as Role) || role === 'admin';
+  const r = (role || '').toLowerCase() as Role;
+  if (isSuper(r)) return true;
+  if (r === 'branch_manager' && item.roles.includes('manager')) return true;
+  return item.roles.includes(r);
 }

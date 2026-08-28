@@ -14,6 +14,12 @@ import {
 
 const CATEGORY_OPTIONS = ['WEIGHT', 'VOLUME', 'LENGTH', 'QUANTITY', 'PACKAGING', 'MEDICAL', 'LIQUID', 'CUSTOM'];
 const MEASUREMENT_OPTIONS = ['METRIC', 'IMPERIAL', 'US_CUSTOMARY', 'OTHER'];
+const MEASUREMENT_LABELS: Record<string, string> = {
+  METRIC: 'Metric',
+  IMPERIAL: 'Imperial',
+  US_CUSTOMARY: 'US Customary',
+  OTHER: 'Other',
+};
 const USAGE_OPTIONS = [
   { key: 'PURCHASE', label: 'Purchases' },
   { key: 'SALES', label: 'Sales' },
@@ -51,6 +57,17 @@ const CATEGORY_BADGE: Record<string, string> = {
   Injection: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   Other: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
 };
+
+const CATEGORY_DOTS: Record<string, string> = {
+  WEIGHT: 'bg-amber-400', VOLUME: 'bg-cyan-400', LENGTH: 'bg-blue-400', QUANTITY: 'bg-purple-400',
+  PACKAGING: 'bg-indigo-400', MEDICAL: 'bg-rose-400', LIQUID: 'bg-teal-400', CUSTOM: 'bg-orange-400',
+};
+
+const STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active', dot: 'bg-emerald-500' },
+  { value: 'INACTIVE', label: 'Inactive', dot: 'bg-red-500' },
+  { value: 'ARCHIVED', label: 'Archived', dot: 'bg-gray-400 dark:bg-gray-500' },
+];
 
 const badgeSoft = (cls: string, dot = true) =>
   `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`;
@@ -170,7 +187,11 @@ export default function UnitsPage() {
   const [datePreset, setDatePreset] = useState('CUSTOM');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [catIndex, setCatIndex] = useState(-1);
+  const [statusIndex, setStatusIndex] = useState(-1);
 
   const patch = useCallback((p: Partial<Filters>) => {
     setFilters(f => ({ ...f, ...p }));
@@ -230,11 +251,20 @@ export default function UnitsPage() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpenDropdown(null);
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenuId(null);
+      const target = e.target as Node;
+      const insideAnchor = (el: HTMLDivElement | null) => el && el.contains(target);
+      if (!insideAnchor(dropdownRef.current) && !insideAnchor(categoryRef.current) && !insideAnchor(statusRef.current)) setOpenDropdown(null);
+      if (menuRef.current && !menuRef.current.contains(target)) setOpenMenuId(null);
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpenDropdown(null); setOpenMenuId(null); }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', keyHandler);
+    };
   }, []);
 
   useEffect(() => {
@@ -253,7 +283,7 @@ export default function UnitsPage() {
     if (filters.search) chips.push({ key: 'search', label: `Search: "${filters.search}"` });
     if (filters.status) chips.push({ key: 'status', label: `Status: ${filters.status.charAt(0) + filters.status.slice(1).toLowerCase()}` });
     if (filters.category) chips.push({ key: 'category', label: `Category: ${filters.category}` });
-    if (filters.measurementSystem) chips.push({ key: 'measurementSystem', label: `System: ${filters.measurementSystem}` });
+    if (filters.measurementSystem) chips.push({ key: 'measurementSystem', label: `System: ${MEASUREMENT_LABELS[filters.measurementSystem] || filters.measurementSystem}` });
     if (filters.baseUnit) chips.push({ key: 'baseUnit', label: `Base: ${filters.baseUnit}` });
     filters.usages.forEach(u => {
       const opt = USAGE_OPTIONS.find(o => o.key === u);
@@ -270,6 +300,59 @@ export default function UnitsPage() {
   }, [filters, datePreset]);
 
   const hasFilters = activeChips.length > 0;
+
+  // Data-driven: seeded from the shared CATEGORY_OPTIONS config, then extended
+  // with any category value actually present in the loaded data, so new backend
+  // categories appear without UI changes. Stable while loading (config only).
+  const allCategories = useMemo(() => {
+    const set = new Set<string>(CATEGORY_OPTIONS);
+    units.forEach(u => { if (u.category) set.add(u.category); });
+    return [...set].sort();
+  }, [units]);
+
+  const pickCategory = useCallback((value: string) => {
+    patch({ category: value });
+    setOpenDropdown(null);
+    setCatIndex(-1);
+  }, [patch]);
+
+  const openCategoryPopover = () => {
+    setOpenDropdown('category');
+    setOpenMenuId(null);
+    setCatIndex(filters.category ? allCategories.indexOf(filters.category) + 1 : -1);
+  };
+
+  const onCategoryKeyDown = (e: React.KeyboardEvent) => {
+    if (openDropdown !== 'category') return;
+    const count = allCategories.length + 1; // index 0 = All Categories
+    if (e.key === 'ArrowDown') { e.preventDefault(); setCatIndex(i => (i + 1) % count); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setCatIndex(i => (i <= 0 ? count - 1 : i - 1)); }
+    else if (e.key === 'Home') { e.preventDefault(); setCatIndex(0); }
+    else if (e.key === 'End') { e.preventDefault(); setCatIndex(count - 1); }
+    else if (e.key === 'Enter' && catIndex >= 0) { e.preventDefault(); pickCategory(catIndex === 0 ? '' : allCategories[catIndex - 1]); }
+  };
+
+  const pickStatus = useCallback((value: string) => {
+    patch({ status: value });
+    setOpenDropdown(null);
+    setStatusIndex(-1);
+  }, [patch]);
+
+  const openStatusPopover = () => {
+    setOpenDropdown('status');
+    setOpenMenuId(null);
+    setStatusIndex(filters.status ? STATUS_OPTIONS.findIndex(s => s.value === filters.status) + 1 : -1);
+  };
+
+  const onStatusKeyDown = (e: React.KeyboardEvent) => {
+    if (openDropdown !== 'status') return;
+    const count = STATUS_OPTIONS.length + 1; // index 0 = All Status
+    if (e.key === 'ArrowDown') { e.preventDefault(); setStatusIndex(i => (i + 1) % count); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setStatusIndex(i => (i <= 0 ? count - 1 : i - 1)); }
+    else if (e.key === 'Home') { e.preventDefault(); setStatusIndex(0); }
+    else if (e.key === 'End') { e.preventDefault(); setStatusIndex(count - 1); }
+    else if (e.key === 'Enter' && statusIndex >= 0) { e.preventDefault(); pickStatus(statusIndex === 0 ? '' : STATUS_OPTIONS[statusIndex - 1].value); }
+  };
 
   const clearAll = () => {
     setFilters({ ...EMPTY_FILTERS });
@@ -395,60 +478,130 @@ export default function UnitsPage() {
             </div>
 
             {/* Category */}
-            <div className="relative">
-              <select
-                value={filters.category}
-                onChange={e => patch({ category: e.target.value })}
-                className={`${selectCls(filters.category)} h-9 w-40`}
+            <div className="relative" ref={categoryRef} onKeyDown={onCategoryKeyDown}>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); openDropdown === 'category' ? setOpenDropdown(null) : openCategoryPopover(); }}
+                className={headerFilterBtn(Boolean(filters.category))}
+                aria-haspopup="listbox"
+                aria-expanded={openDropdown === 'category'}
               >
-                <option value="">Category: All</option>
-                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+                <Layers className="w-4 h-4" />
+                <span className="max-w-28 truncate">{filters.category || 'Category'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'category' ? 'rotate-180' : ''}`} />
+              </button>
+              {openDropdown === 'category' && (
+                <div role="listbox" aria-label="Filter by category" className="absolute left-0 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 z-50 overflow-hidden animate-slideDown">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-[#273244] bg-gray-50/70 dark:bg-[#111827]/60">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filter by Category</span>
+                    {filters.category && (
+                      <button onClick={() => pickCategory('')} className="text-[11px] font-semibold text-red-500 hover:underline">Clear</button>
+                    )}
+                  </div>
+                  <div className="p-1.5 max-h-60 overflow-y-auto overscroll-contain">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={!filters.category}
+                      onMouseEnter={() => setCatIndex(0)}
+                      onClick={() => pickCategory('')}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${!filters.category ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : catIndex === 0 ? 'bg-gray-50 dark:bg-[#1F2937] text-gray-700 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                    >
+                      All Categories
+                      {!filters.category && <CheckIcon />}
+                    </button>
+                    {allCategories.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-center text-gray-400">No categories available</p>
+                    ) : allCategories.map((c, i) => {
+                      const idx = i + 1;
+                      const selected = filters.category === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onMouseEnter={() => setCatIndex(idx)}
+                          onClick={() => pickCategory(selected ? '' : c)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${selected ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : catIndex === idx ? 'bg-gray-50 dark:bg-[#1F2937] text-gray-700 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${CATEGORY_DOTS[c] || 'bg-orange-400'}`} />
+                            <span className="truncate">{c}</span>
+                          </span>
+                          {selected && <CheckIcon />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Status */}
-            <div className="relative">
-              <select
-                value={filters.status}
-                onChange={e => patch({ status: e.target.value })}
-                className={`${selectCls(filters.status)} h-9 w-36`}
+            <div className="relative" ref={statusRef} onKeyDown={onStatusKeyDown}>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); openDropdown === 'status' ? setOpenDropdown(null) : openStatusPopover(); }}
+                className={headerFilterBtn(Boolean(filters.status))}
+                aria-haspopup="listbox"
+                aria-expanded={openDropdown === 'status'}
               >
-                <option value="">Status: All</option>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-                <option value="ARCHIVED">Archived</option>
-              </select>
-            </div>
-
-            {/* Measurement system */}
-            <div className="relative">
-              <select
-                value={filters.measurementSystem}
-                onChange={e => patch({ measurementSystem: e.target.value })}
-                className={`${selectCls(filters.measurementSystem)} h-9 w-44`}
-              >
-                <option value="">System: All</option>
-                {MEASUREMENT_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-
-            {/* Base unit */}
-            <div className="relative">
-              <select
-                value={filters.baseUnit}
-                onChange={e => patch({ baseUnit: e.target.value })}
-                className={`${selectCls(filters.baseUnit)} h-9 w-40`}
-              >
-                <option value="">Base: All</option>
-                {[...new Set(units.map(u => u.baseUnit).filter(Boolean) as string[])].map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
+                <span className={`w-2 h-2 rounded-full ${filters.status ? STATUS_OPTIONS.find(s => s.value === filters.status)?.dot || 'bg-[#0F9291]' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                <span className="max-w-24 truncate">{filters.status ? STATUS_OPTIONS.find(s => s.value === filters.status)?.label || filters.status : 'Status'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'status' ? 'rotate-180' : ''}`} />
+              </button>
+              {openDropdown === 'status' && (
+                <div role="listbox" aria-label="Filter by status" className="absolute left-0 mt-2 w-52 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 z-50 overflow-hidden animate-slideDown">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-[#273244] bg-gray-50/70 dark:bg-[#111827]/60">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filter by Status</span>
+                    {filters.status && (
+                      <button onClick={() => pickStatus('')} className="text-[11px] font-semibold text-red-500 hover:underline">Clear</button>
+                    )}
+                  </div>
+                  <div className="p-1.5 max-h-60 overflow-y-auto overscroll-contain">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={!filters.status}
+                      onMouseEnter={() => setStatusIndex(0)}
+                      onClick={() => pickStatus('')}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${!filters.status ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : statusIndex === 0 ? 'bg-gray-50 dark:bg-[#1F2937] text-gray-700 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                    >
+                      All Status
+                      {!filters.status && <CheckIcon />}
+                    </button>
+                    {STATUS_OPTIONS.map((s, i) => {
+                      const idx = i + 1;
+                      const selected = filters.status === s.value;
+                      return (
+                        <button
+                          key={s.value}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onMouseEnter={() => setStatusIndex(idx)}
+                          onClick={() => pickStatus(selected ? '' : s.value)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${selected ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : statusIndex === idx ? 'bg-gray-50 dark:bg-[#1F2937] text-gray-700 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+                            <span className="truncate">{s.label}</span>
+                          </span>
+                          {selected && <CheckIcon />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Date range */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={e => { e.stopPropagation(); setOpenDropdown(openDropdown === 'date' ? null : 'date'); setOpenMenuId(null); }}
-                className={`${headerFilterBtn(Boolean(filters.from || filters.to))} ${filters.from || filters.to ? '' : 'h-9 border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-gray-600 dark:text-gray-300'}`}
+                className={headerFilterBtn(Boolean(filters.from || filters.to))}
               >
                 <CalendarDays className="w-4 h-4" />
                 <span>
@@ -459,32 +612,56 @@ export default function UnitsPage() {
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'date' ? 'rotate-180' : ''}`} />
               </button>
               {openDropdown === 'date' && (
-                <div className="absolute left-0 mt-2 w-60 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 p-1.5 z-50">
-                  {QUICK_RANGES.map(q => (
+                <div className="absolute left-0 mt-2 w-80 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 z-50 overflow-hidden animate-slideDown">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-[#273244] bg-gray-50/70 dark:bg-[#111827]/60">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created Date</span>
+                    {(filters.from || filters.to) && (
+                      <button onClick={() => applyQuickRange('CUSTOM')} className="text-[11px] font-semibold text-red-500 hover:underline">Clear</button>
+                    )}
+                  </div>
+                  <div className="p-2 grid grid-cols-2 gap-1">
                     <button
-                      key={q.key}
-                      onClick={() => applyQuickRange(q.key)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${datePreset === q.key ? 'text-[#0F9291] bg-[#0F9291]/5' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                      onClick={() => applyQuickRange('CUSTOM')}
+                      className={`col-span-2 flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!filters.from && !filters.to ? 'text-[#0F9291] bg-[#0F9291]/5 ring-1 ring-inset ring-[#0F9291]/20' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
                     >
-                      {q.label}
-                      {datePreset === q.key && <CheckIcon />}
+                      All Time
+                      {!filters.from && !filters.to && <CheckIcon />}
                     </button>
-                  ))}
-                  <div className="border-t border-gray-100 dark:border-[#273244] mt-1 pt-1.5 px-3 pb-2">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="date"
-                        value={filters.from}
-                        onChange={e => { setDatePreset('CUSTOM'); patch({ from: e.target.value }); }}
-                        className="text-xs text-gray-600 dark:text-gray-300 bg-transparent outline-none border border-gray-200 dark:border-[#273244] rounded-lg px-2 py-1.5 [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                      <span className="text-gray-300 dark:text-gray-600">-</span>
-                      <input
-                        type="date"
-                        value={filters.to}
-                        onChange={e => { setDatePreset('CUSTOM'); patch({ to: e.target.value }); }}
-                        className="text-xs text-gray-600 dark:text-gray-300 bg-transparent outline-none border border-gray-200 dark:border-[#273244] rounded-lg px-2 py-1.5 [color-scheme:light] dark:[color-scheme:dark]"
-                      />
+                    {QUICK_RANGES.map(q => {
+                      const active = datePreset === q.key;
+                      return (
+                        <button
+                          key={q.key}
+                          onClick={() => applyQuickRange(q.key)}
+                          className={`flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-[13px] transition-colors ${active ? 'text-[#0F9291] bg-[#0F9291]/5 ring-1 ring-inset ring-[#0F9291]/20 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                        >
+                          <span className="truncate">{q.label}</span>
+                          {active && <CheckIcon />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="border-t border-gray-100 dark:border-[#273244] px-3.5 py-3 bg-gray-50/50 dark:bg-[#111827]/40">
+                    <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Custom Range</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">From</label>
+                        <input
+                          type="date"
+                          value={filters.from}
+                          onChange={e => { setDatePreset('CUSTOM'); patch({ from: e.target.value }); }}
+                          className="w-full h-9 px-2.5 text-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#273244] rounded-lg outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 [color-scheme:light] dark:[color-scheme:dark]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">To</label>
+                        <input
+                          type="date"
+                          value={filters.to}
+                          onChange={e => { setDatePreset('CUSTOM'); patch({ to: e.target.value }); }}
+                          className="w-full h-9 px-2.5 text-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#273244] rounded-lg outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 [color-scheme:light] dark:[color-scheme:dark]"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -505,19 +682,27 @@ export default function UnitsPage() {
                 <Grid className="w-4 h-4" /> Columns <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'columns' ? 'rotate-180' : ''}`} />
               </button>
               {openDropdown === 'columns' && (
-                <div className="absolute right-0 mt-2 w-52 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 p-1.5 z-50">
-                  {COLUMNS.map(col => (
-                    <label key={col.key} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] cursor-pointer transition-colors">
-                      <Grid className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
-                      <input
-                        type="checkbox"
-                        checked={visibleCols[col.key]}
-                        onChange={() => setVisibleCols(p => ({ ...p, [col.key]: !p[col.key] }))}
-                        className="w-4 h-4 rounded border-gray-300 text-[#0F9291] focus:ring-[#0F9291] accent-[#0F9291]"
-                      />
-                      <span className="flex-1">{col.label}</span>
-                    </label>
-                  ))}
+                <div className="absolute right-0 mt-2 w-60 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 z-50 overflow-hidden animate-slideDown">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-[#273244] bg-gray-50/70 dark:bg-[#111827]/60">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Visible Columns</span>
+                    <div className="flex items-center gap-2.5">
+                      <button onClick={() => setVisibleCols(Object.fromEntries(COLUMNS.map(c => [c.key, true])))} className="text-[11px] font-semibold text-[#0F9291] hover:underline">All</button>
+                      <button onClick={() => setVisibleCols(Object.fromEntries(COLUMNS.map(c => [c.key, false])))} className="text-[11px] font-semibold text-gray-400 hover:text-red-500">None</button>
+                    </div>
+                  </div>
+                  <div className="p-1.5 max-h-64 overflow-y-auto">
+                    {COLUMNS.map(col => (
+                      <label key={col.key} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={visibleCols[col.key]}
+                          onChange={() => setVisibleCols(p => ({ ...p, [col.key]: !p[col.key] }))}
+                          className="w-4 h-4 rounded border-gray-300 accent-[#0F9291]"
+                        />
+                        <span className="flex-1">{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -528,17 +713,26 @@ export default function UnitsPage() {
                 <SortDesc className="w-4 h-4" /> Sort by <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'sort' ? 'rotate-180' : ''}`} />
               </button>
               {openDropdown === 'sort' && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 p-1.5 z-50">
-                  {SORT_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { patch({ sort: opt.value }); setOpenDropdown(null); }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${filters.sort === opt.value ? 'text-[#0F9291] bg-[#0F9291]/5' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
-                    >
-                      {opt.label}
-                      {filters.sort === opt.value && <CheckIcon />}
-                    </button>
-                  ))}
+                <div className="absolute right-0 mt-2 w-60 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 z-50 overflow-hidden animate-slideDown">
+                  <div className="px-4 py-2.5 border-b border-gray-100 dark:border-[#273244] bg-gray-50/70 dark:bg-[#111827]/60 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Sort By</span>
+                    <span className="text-[11px] text-gray-400">{SORT_OPTIONS.find(o => o.value === filters.sort)?.label}</span>
+                  </div>
+                  <div className="p-1.5 max-h-72 overflow-y-auto">
+                    {SORT_OPTIONS.map(opt => {
+                      const active = filters.sort === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => { patch({ sort: opt.value }); setOpenDropdown(null); }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${active ? 'text-[#0F9291] bg-[#0F9291]/5 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937]'}`}
+                        >
+                          {opt.label}
+                          {active && <CheckIcon />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -549,7 +743,7 @@ export default function UnitsPage() {
                 <Upload className="w-4 h-4" /> Export <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === 'export' ? 'rotate-180' : ''}`} />
               </button>
               {openDropdown === 'export' && (
-                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 p-1.5 z-50">
+                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] shadow-lg shadow-gray-200/50 dark:shadow-black/40 p-1.5 z-50 overflow-hidden animate-slideDown">
                   <button onClick={exportPDF} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-colors">
                     <Printer className="w-4 h-4 text-gray-400" /> Export as PDF
                   </button>
@@ -775,7 +969,7 @@ export default function UnitsPage() {
               <label className={labelCls}>Category</label>
               <select value={filters.category} onChange={e => patch({ category: e.target.value })} className={`${selectCls(filters.category)} w-full`}>
                 <option value="">All Categories</option>
-                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
 
@@ -783,7 +977,7 @@ export default function UnitsPage() {
             <div>
               <label className={labelCls}>Status</label>
               <select value={filters.status} onChange={e => patch({ status: e.target.value })} className={`${selectCls(filters.status)} w-full`}>
-                <option value="">All</option>
+                <option value="">All Status</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
                 <option value="ARCHIVED">Archived</option>
@@ -794,8 +988,8 @@ export default function UnitsPage() {
             <div>
               <label className={labelCls}>Measurement System</label>
               <select value={filters.measurementSystem} onChange={e => patch({ measurementSystem: e.target.value })} className={`${selectCls(filters.measurementSystem)} w-full`}>
-                <option value="">All</option>
-                {MEASUREMENT_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                <option value="">All Systems</option>
+                {MEASUREMENT_OPTIONS.map(m => <option key={m} value={m}>{MEASUREMENT_LABELS[m] || m}</option>)}
               </select>
             </div>
 
@@ -803,7 +997,7 @@ export default function UnitsPage() {
             <div>
               <label className={labelCls}>Base Unit</label>
               <select value={filters.baseUnit} onChange={e => patch({ baseUnit: e.target.value })} className={`${selectCls(filters.baseUnit)} w-full`}>
-                <option value="">All</option>
+                <option value="">All Base Units</option>
                 {[...new Set(units.map(u => u.baseUnit).filter(Boolean) as string[])].map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>

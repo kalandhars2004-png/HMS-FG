@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { shouldIgnoreGlobalKey } from '@/lib/modal-guard';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -11,6 +11,7 @@ import {
 import {
   NAV_SECTIONS, canSeeSection, canSeeItem, ROLE_LABELS, type NavItem,
 } from '@/components/sidebar/nav';
+import BranchSwitcher from '@/components/BranchSwitcher';
 
 /* ------------------------------------------------------------------ */
 /* Design tokens — dark pharmacy-POS teal.                              */
@@ -62,13 +63,32 @@ function Stored<T>(key: string, fallback: T): T {
   return fallback;
 }
 
-/** Exactly one row may be active: prefer an exact path match, else the longest prefix. */
-function getExactActiveHref(pathname: string, items: NavItem[]): string | null {
-  const clean = pathname.split('?')[0];
-  const exact = items.find(i => i.href.split('?')[0] === clean);
+/** Exactly one row may be active: prefers full href (with ?view=) match, else longest prefix. */
+function getExactActiveHref(pathname: string, search: string, items: NavItem[]): string | null {
+  const params = new URLSearchParams(search);
+  const full = search ? `${pathname}?${search}` : pathname;
+
+  // 1) exact full href (e.g. /sales/invoices?view=payments → Payments)
+  const exactFull = items.find(i => i.href === full);
+  if (exactFull) return exactFull.href;
+
+  // 2) query-variant of this pathname that matches current params (view=payments etc)
+  //    — must be checked BEFORE falling back to the bare pathname, otherwise
+  //    /sales/invoices?view=payments would incorrectly highlight Invoices.
+  const qVariants = items.filter(i => i.href.startsWith(pathname + '?'));
+  for (const qv of qVariants) {
+    const need = new URLSearchParams(qv.href.split('?')[1] || '');
+    let ok = true;
+    for (const [k, v] of need.entries()) if (params.get(k) !== v) ok = false;
+    if (ok) return qv.href;
+  }
+
+  // 3) exact bare pathname (e.g. /sales/invoices → Invoices)
+  const exact = items.find(i => i.href === pathname);
   if (exact) return exact.href;
 
-  const withSlash = items.filter(i => !i.href.startsWith('#') && clean.startsWith(i.href.split('?')[0] + '/'));
+  // 4) longest prefix (nested routes)
+  const withSlash = items.filter(i => !i.href.startsWith('#') && pathname.startsWith(i.href.split('?')[0] + '/'));
   if (withSlash.length === 0) return null;
   withSlash.sort((a, b) => b.href.length - a.href.length);
   return withSlash[0].href;
@@ -230,6 +250,7 @@ const CollapseBtn = memo(function CollapseBtn({ collapsed, onClick }: { collapse
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout } = useAuth();
   const role = user?.role;
@@ -260,7 +281,7 @@ export default function Sidebar() {
     return items;
   }, [visibleSections]);
 
-  const activeHref = useMemo(() => getExactActiveHref(pathname, allNavItems), [pathname, allNavItems]);
+  const activeHref = useMemo(() => getExactActiveHref(pathname, searchParams.toString(), allNavItems), [pathname, searchParams, allNavItems]);
 
   const isActive = useCallback((href?: string) => {
     if (!href || href.startsWith('#')) return false;
@@ -276,7 +297,7 @@ export default function Sidebar() {
 
   useEffect(() => { localStorage.setItem('ims.sidebar.collapsed', JSON.stringify(collapsed)); }, [collapsed]);
   useEffect(() => { localStorage.setItem('ims.sidebar.pinned', JSON.stringify(pinned)); }, [pinned]);
-  useEffect(() => { if (mobileOpen) setMobileOpen(false); }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (mobileOpen) setMobileOpen(false); }, [pathname, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearTipTimer = useCallback(() => {
     if (tipTimer.current !== null) { window.clearTimeout(tipTimer.current); tipTimer.current = null; }
@@ -516,6 +537,20 @@ export default function Sidebar() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* Branch switcher (§28-29) */}
+        {!collapsed && (
+          <div className="shrink-0 px-3" style={{ paddingLeft: 26, paddingRight: 18, marginTop: 12 }}>
+            <BranchSwitcher />
+          </div>
+        )}
+        {collapsed && (
+          <div className="shrink-0 flex justify-center" style={{ marginTop: 12 }}>
+            <div className="w-9 h-9 rounded-xl bg-[#0A3B38] flex items-center justify-center text-[#00A6A6] text-xs font-bold">
+              {(user?.branchId ? 'B' : 'A')}
+            </div>
           </div>
         )}
 

@@ -15,6 +15,7 @@ import ExportModal from '@/components/dashboard/ExportModal';
 import StockAlertDialog from '@/components/dashboard/StockAlertDialog';
 import SalesPurchasePanel from '@/components/dashboard/SalesPurchasePanel';
 import { CardSkeleton, ChartSkeleton } from '@/components/ui/Loading';
+import { beginSilentScope, endSilentScope } from '@/components/ui/global-loader/loader-bridge';
 
 const LOW_STOCK_THRESHOLD = DEFAULT_LOW_STOCK;
 
@@ -143,7 +144,7 @@ export default function DashboardPage() {
     loadDashboard({ useBootCache: true });
     // Refetch when the tab regains focus, and when any screen reports that it
     // changed stock or sales (POS checkout, stock adjustment, receiving stock).
-    const refresh = () => loadDashboard();
+    const refresh = () => { beginSilentScope(); Promise.resolve(loadDashboard()).finally(endSilentScope); };
     window.addEventListener('focus', refresh);
     window.addEventListener(DATA_CHANGED_EVENT, refresh);
     return () => {

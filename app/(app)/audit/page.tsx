@@ -7,6 +7,7 @@ import {
   Clock, User, House,
 } from '@/components/ui/LucideIcon';
 import GlobalModal from '@/components/ui/GlobalModal';
+import { beginSilentScope, endSilentScope } from '@/components/ui/global-loader/loader-bridge';
 
 interface AuditLog {
   id: number;
@@ -51,7 +52,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(loadLogs, 30000);
+    const interval = setInterval(() => { beginSilentScope(); Promise.resolve(loadLogs()).finally(endSilentScope); }, 30000);
     return () => clearInterval(interval);
   }, [autoRefresh]);
 

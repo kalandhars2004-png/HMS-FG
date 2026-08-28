@@ -515,6 +515,7 @@ export default function AddMedicinePage() {
     if (formData.manufacturingDate) fd.append('manufacturingDate', formData.manufacturingDate + 'T00:00:00');
     fd.append('prescriptionRequired', String(formData.prescriptionRequired));
     fd.append('isActive', String(isActive));
+    if (storageCondition) fd.append('storageCondition', storageCondition);
     if (imageFile) fd.append('imageFile', imageFile);
     return fd;
   };
@@ -1060,7 +1061,10 @@ export default function AddMedicinePage() {
             </div>
             <div className="space-y-3">
               {storageConditions.map(sc => (
-                <label key={sc.label} className={`flex items-center gap-4 p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                <label
+                  key={sc.label}
+                  onClick={() => setStorageCondition(storageCondition === sc.label ? '' : sc.label)}
+                  className={`flex items-center gap-4 p-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none ${
                   storageCondition === sc.label ? 'border-[#0F9291] dark:border-[#0F9291] bg-[#0F9291]/5 dark:bg-[#0F9291]/10 shadow-sm' : 'border-gray-200 dark:border-[#273244] hover:border-gray-300 dark:hover:border-[#3a3a48] hover:bg-gray-50 dark:hover:bg-[#1F2937]'
                 }`}>
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 ${

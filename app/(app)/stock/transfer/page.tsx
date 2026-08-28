@@ -4,87 +4,41 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Search, Plus, RotateCw, Maximize, ChevronDown, ChevronRight, ChevronUp, X, Edit, Trash2,
-  EllipsisVertical, Filter, Columns, CalendarDays, Clock, House, Check,
-  FileSpreadsheet, Printer, ArrowUpToLine, ArrowUpDown, Save, Loader2, Truck, Pill, Users,
+  EllipsisVertical, Filter, Columns, CalendarDays, House, Check,
+  FileSpreadsheet, Printer, ArrowUpToLine, ArrowUpDown, Save, Loader2, Truck, Pill,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
+import { StockTransfersAPI, ProductsAPI, WarehousesAPI } from '@/lib/api';
 
-/* ───────────── Types & Demo Data (DreamPOS Stock Transfer) ───────────── */
+/* ───────────── Types (real backend model) ───────────── */
 
 interface TransferRow {
-  id: string;
+  id: number;
+  productId: number;
   item: string;
-  dateISO: string;
-  time24: string;
-  ts: number;
+  fromId: number;
   from: string;
+  toId: number;
   to: string;
   qty: number;
   reason: string;
-  by: string;
-  status: 'Active' | 'Inactive';
+  status: string;
+  datetime: string;
+  ts: number;
 }
 
-const STOCK_ITEMS = [
-  'Paracetamol 500', 'Amoxicillin 250', 'Cetirizine', 'Ceftriaxone 20',
-  'Betnovate', 'Amoxicillin 30', 'Tetanus Toxoid', 'Atorvastatin',
-  'Metformin 100', 'Ondansetron',
-];
+interface ProductOption { id: number; name: string; }
+interface WarehouseOption { id: number; name: string; }
 
-const BRANCHES = [
-  'Main Branch, Newyork', 'Branch 2, Los Angeles', 'Branch 3, San Diego',
-  'Branch 4, Dallas', 'Branch 5, San Antonio',
-];
-
-const USERS = ['Mervin Nesmith', 'Joyce Kerns', 'John Baxter', 'Margaret Fehr', 'Benjamin Walker', 'Elizabeth Porter', 'Freddie Brown', 'Dawn Peterson', 'James Howard', 'Doris Crosby'];
-
-function to12(h: number, m: number): string {
-  const ap = h >= 12 ? 'PM' : 'AM';
-  const hh = h % 12 === 0 ? 12 : h % 12;
-  return `${String(hh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ap}`;
-}
-
-function formatDisplay(iso: string, time24: string): string {
-  const d = new Date(`${iso}T${time24}`);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const [h, m] = time24.split(':').map(Number);
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}, ${to12(h, m)}`;
-}
-
-const T = (id: string, item: string, d: string, time: string, from: string, to: string, qty: number, by: string): TransferRow => {
-  const [h, m] = time.split(':').map(Number);
-  return {
-    id, item, dateISO: d, time24: time,
-    ts: new Date(`${d}T${time}`).getTime(),
-    from, to, qty, reason: '', by, status: 'Active',
-  };
-};
-
-const INITIAL_ROWS: TransferRow[] = [
-  T('#TRA016', 'Paracetamol 500', '2026-04-24', '10:00', 'Main Branch, Newyork', 'Branch 2, Los Angeles', 30, 'Mervin Nesmith'),
-  T('#TRA015', 'Amoxicillin 250', '2026-04-20', '16:15', 'Branch 2, Los Angeles', 'Branch 3, San Diego', 180, 'Joyce Kerns'),
-  T('#TRA014', 'Cetirizine', '2026-04-10', '11:30', 'Branch 4, Dallas', 'Branch 2, Los Angeles', 50, 'John Baxter'),
-  T('#TRA013', 'Ceftriaxone 20', '2026-03-21', '09:10', 'Main Branch, Newyork', 'Branch 3, San Diego', 110, 'Margaret Fehr'),
-  T('#TRA012', 'Betnovate', '2026-03-18', '15:00', 'Branch 2, Los Angeles', 'Branch 5, San Antonio', 70, 'Benjamin Walker'),
-  T('#TRA011', 'Amoxicillin 30', '2026-03-06', '09:30', 'Branch 4, Dallas', 'Branch 3, San Diego', 300, 'Elizabeth Porter'),
-  T('#TRA010', 'Tetanus Toxoid', '2026-02-26', '17:40', 'Branch 5, San Antonio', 'Main Branch, Newyork', 230, 'Freddie Brown'),
-  T('#TRA009', 'Atorvastatin', '2026-02-17', '09:00', 'Main Branch, Newyork', 'Branch 2, Los Angeles', 50, 'Dawn Peterson'),
-  T('#TRA008', 'Metformin 100', '2026-01-20', '13:15', 'Branch 3, San Diego', 'Branch 5, San Antonio', 140, 'James Howard'),
-  T('#TRA007', 'Ondansetron', '2026-01-12', '16:30', 'Branch 2, Los Angeles', 'Main Branch, Newyork', 130, 'Doris Crosby'),
-];
-
-const AVATAR_COLORS = [
-  'bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-rose-500',
-  'bg-indigo-500', 'bg-amber-500', 'bg-cyan-500', 'bg-fuchsia-500',
-];
+const STATUS_OPTIONS = ['Active', 'Inactive'];
 
 const COLUMN_DEFS = [
-  { key: 'item', label: 'Item' },
   { key: 'datetime', label: 'Date & Time' },
   { key: 'from', label: 'From' },
   { key: 'to', label: 'To' },
+  { key: 'item', label: 'Items' },
   { key: 'qty', label: 'Quantity' },
-  { key: 'by', label: 'By' },
+  { key: 'status', label: 'Status' },
 ];
 
 const DATE_PRESETS = [
@@ -94,50 +48,54 @@ const DATE_PRESETS = [
   { key: '90', label: 'Last 90 Days' },
 ];
 
-const FILTER_MEDICINES = ['Paracetamol 500', 'Amoxicillin 250', 'Cetirizine', 'Ceftriaxone 20', 'Betnovate', 'Amoxicillin 30', 'Tetanus Toxoid', 'Atorvastatin'];
-const FILTER_USERS = ['Mervin Nesmith', 'Joyce Kerns', 'John Baxter', 'Margaret Fehr', 'Benjamin Walker', 'Elizabeth Porter', 'Freddie Brown', 'Dawn Peterson'];
-const FILTER_TOS = ['Branch 2, Los Angeles', 'Branch 3, San Diego', 'Main Branch, Newyork', 'Branch 5, San Antonio'];
+function formatDateTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 === 0 ? 12 : h % 12;
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}, ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`;
+}
 
 const modalInputCls = 'w-full h-11 px-3.5 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#141B2E] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10 transition-all text-gray-900 dark:text-gray-100 placeholder-gray-400';
 const modalLabelCls = 'block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5';
 
 /* ───────────── Create / Edit Transfer Modal ───────────── */
 
-function TransferFormModal({ mode, initial, saving, onClose, onSave }: {
+function TransferFormModal({ mode, initial, saving, products, warehouses, onClose, onSave }: {
   mode: 'create' | 'edit';
   initial: TransferRow | null;
   saving: boolean;
+  products: ProductOption[];
+  warehouses: WarehouseOption[];
   onClose: () => void;
-  onSave: (data: { item: string; from: string; to: string; dateISO: string; time24: string; qty: number; reason: string; by: string }) => void;
+  onSave: (data: { productId: number; fromId: number; toId: number; qty: number; reason: string; status: string }) => void;
 }) {
   const [form, setForm] = useState({
-    item: initial?.item || '',
-    from: initial?.from || '',
-    to: initial?.to || '',
-    date: initial?.dateISO || '',
-    time: initial?.time24 || '',
+    productId: initial?.productId ?? 0,
+    fromId: initial?.fromId ?? 0,
+    toId: initial?.toId ?? 0,
     qty: initial ? String(initial.qty) : '',
     reason: initial?.reason || '',
-    by: initial?.by || '',
+    status: initial?.status || 'Active',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = () => {
     const e: Record<string, string> = {};
-    if (!form.item) e.item = 'Please select an item';
-    if (!form.from) e.from = 'Please select a source branch';
-    if (!form.to) e.to = 'Please select a destination branch';
-    if (form.from && form.to && form.from === form.to) e.to = 'Source and destination must differ';
-    if (!form.date) e.date = 'Please select a date';
-    if (!form.time) e.time = 'Please select a time';
+    if (!form.productId) e.item = 'Please select an item';
+    if (!form.fromId) e.from = 'Please select a source branch';
+    if (!form.toId) e.to = 'Please select a destination branch';
+    if (form.fromId && form.toId && form.fromId === form.toId) e.to = 'Source and destination must differ';
     const qty = Number(form.qty);
     if (!form.qty || isNaN(qty) || qty <= 0) e.qty = 'Quantity must be greater than 0';
-    if (!form.by) e.by = 'Please select a user';
     setErrors(e);
     if (Object.keys(e).length > 0) return;
-    onSave({ item: form.item, from: form.from, to: form.to, dateISO: form.date, time24: form.time, qty, reason: form.reason, by: form.by });
+    onSave({ productId: form.productId, fromId: form.fromId, toId: form.toId, qty, reason: form.reason, status: form.status });
   };
 
   return (
@@ -154,65 +112,45 @@ function TransferFormModal({ mode, initial, saving, onClose, onSave }: {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-12">
           <label className={modalLabelCls}>Item <span className="text-red-500">*</span></label>
-          <select value={form.item} onChange={e => set('item', e.target.value)} className={`${modalInputCls} appearance-none cursor-pointer`}>
-            <option value="">Select</option>
-            {STOCK_ITEMS.map(i => <option key={i} value={i}>{i}</option>)}
+          <select value={form.productId} onChange={e => set('productId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
+            <option value={0}>Select</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {errors.item && <p className="text-xs text-red-500 mt-1">{errors.item}</p>}
         </div>
         <div className="col-span-12 sm:col-span-6">
           <label className={modalLabelCls}>From Branch <span className="text-red-500">*</span></label>
-          <select value={form.from} onChange={e => set('from', e.target.value)} className={`${modalInputCls} appearance-none cursor-pointer`}>
-            <option value="">Select</option>
-            {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+          <select value={form.fromId} onChange={e => set('fromId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
+            <option value={0}>Select</option>
+            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
           {errors.from && <p className="text-xs text-red-500 mt-1">{errors.from}</p>}
         </div>
         <div className="col-span-12 sm:col-span-6">
           <label className={modalLabelCls}>To Branch <span className="text-red-500">*</span></label>
-          <select value={form.to} onChange={e => set('to', e.target.value)} className={`${modalInputCls} appearance-none cursor-pointer`}>
-            <option value="">Select</option>
-            {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+          <select value={form.toId} onChange={e => set('toId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
+            <option value={0}>Select</option>
+            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
           {errors.to && <p className="text-xs text-red-500 mt-1">{errors.to}</p>}
         </div>
 
         <div className="col-span-12 sm:col-span-6">
-          <label className={modalLabelCls}>Date <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className={`${modalInputCls} pr-3`} />
-            <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-          {errors.date && <p className="text-xs text-red-500 mt-1">{errors.date}</p>}
-        </div>
-        <div className="col-span-12 sm:col-span-6">
-          <label className={modalLabelCls}>Time <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <input type="time" value={form.time} onChange={e => set('time', e.target.value)} className={`${modalInputCls} pr-3`} />
-            <Clock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-          {errors.time && <p className="text-xs text-red-500 mt-1">{errors.time}</p>}
-        </div>
-
-        <div className="col-span-12">
           <label className={modalLabelCls}>Quantity <span className="text-red-500">*</span></label>
           <input type="number" min="0" placeholder="0" value={form.qty} onChange={e => set('qty', e.target.value)} className={modalInputCls} />
           {errors.qty && <p className="text-xs text-red-500 mt-1">{errors.qty}</p>}
+        </div>
+        <div className="col-span-12 sm:col-span-6">
+          <label className={modalLabelCls}>Status</label>
+          <select value={form.status} onChange={e => set('status', e.target.value)} className={`${modalInputCls} appearance-none cursor-pointer`}>
+            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
 
         <div className="col-span-12">
           <label className={modalLabelCls}>Reason</label>
           <textarea rows={4} value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Reason for transfer"
             className={`${modalInputCls} h-auto min-h-[96px] py-3 resize-none`} />
-        </div>
-
-        <div className="col-span-12">
-          <label className={modalLabelCls}>Adjusted By <span className="text-red-500">*</span></label>
-          <select value={form.by} onChange={e => set('by', e.target.value)} className={`${modalInputCls} appearance-none cursor-pointer`}>
-            <option value="">Select</option>
-            {USERS.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-          {errors.by && <p className="text-xs text-red-500 mt-1">{errors.by}</p>}
         </div>
       </div>
 
@@ -243,29 +181,26 @@ function FilterCheckRow({ checked, onToggle, badge }: { checked: boolean; onTogg
   );
 }
 
-function FilterSidebar({ draftMedicines, setDraftMedicines, draftUsers, setDraftUsers, draftTos, setDraftTos, draftStatuses, setDraftStatuses, onCancel, onApply }: {
+function FilterSidebar({ allMedicines, allTos, draftMedicines, setDraftMedicines, draftTos, setDraftTos, draftStatuses, setDraftStatuses, onCancel, onApply }: {
+  allMedicines: string[];
+  allTos: string[];
   draftMedicines: string[]; setDraftMedicines: (v: string[]) => void;
-  draftUsers: string[]; setDraftUsers: (v: string[]) => void;
   draftTos: string[]; setDraftTos: (v: string[]) => void;
   draftStatuses: string[]; setDraftStatuses: (v: string[]) => void;
   onCancel: () => void;
   onApply: () => void;
 }) {
   const [collapseMed, setCollapseMed] = useState(true);
-  const [collapseUser, setCollapseUser] = useState(true);
   const [collapseTo, setCollapseTo] = useState(true);
   const [collapseStatus, setCollapseStatus] = useState(true);
-  const [moreMed, setMoreMed] = useState(false);
-  const [moreUser, setMoreUser] = useState(false);
   const [medSearch, setMedSearch] = useState('');
-  const [userSearch, setUserSearch] = useState('');
+  const [toSearch, setToSearch] = useState('');
 
   const toggleIn = (list: string[], v: string, set: (v: string[]) => void) => set(list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
 
-  const visibleMedicines = FILTER_MEDICINES.filter(i => i.toLowerCase().includes(medSearch.toLowerCase()));
-  const shownMedicines = moreMed ? visibleMedicines : visibleMedicines.slice(0, 5);
-  const visibleUsers = FILTER_USERS.filter(u => u.toLowerCase().includes(userSearch.toLowerCase()));
-  const shownUsers = moreUser ? visibleUsers : visibleUsers.slice(0, 5);
+  const visibleMedicines = allMedicines.filter(i => i.toLowerCase().includes(medSearch.toLowerCase()));
+  const shownMedicines = visibleMedicines.slice(0, 50);
+  const visibleTos = allTos.filter(b => b.toLowerCase().includes(toSearch.toLowerCase()));
 
   return (
     <div className="fixed inset-0 z-[1100]">
@@ -306,40 +241,7 @@ function FilterSidebar({ draftMedicines, setDraftMedicines, draftUsers, setDraft
                     </span>
                   } />
                 ))}
-                {visibleMedicines.length > 5 && (
-                  <button onClick={() => setMoreMed(!moreMed)} className="text-[#0F9291] text-xs font-medium hover:underline mt-1">
-                    {moreMed ? 'View Less' : 'View More'}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Adjusted By */}
-          <div className="rounded-2xl border border-gray-100 dark:border-[#273244]">
-            <button onClick={() => setCollapseUser(!collapseUser)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#151E35] rounded-t-2xl transition-colors">
-              Adjusted By
-              {collapseUser ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
-            </button>
-            {collapseUser && (
-              <div className="px-4 pb-4 pt-1">
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search" className="w-full h-9 pl-9 pr-3 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10" />
-                </div>
-                {shownUsers.map(u => (
-                  <FilterCheckRow key={u} checked={draftUsers.includes(u)} onToggle={() => toggleIn(draftUsers, u, setDraftUsers)} badge={
-                    <span className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-gray-200 dark:bg-[#232323] border border-gray-100 dark:border-[#273244] flex items-center justify-center flex-shrink-0"><Users className="w-3 h-3 text-gray-500 dark:text-gray-400" /></span>
-                      {u}
-                    </span>
-                  } />
-                ))}
-                {visibleUsers.length > 5 && (
-                  <button onClick={() => setMoreUser(!moreUser)} className="text-[#0F9291] text-xs font-medium hover:underline mt-1">
-                    {moreUser ? 'View Less' : 'View More'}
-                  </button>
-                )}
+                {visibleMedicines.length === 0 && <p className="text-xs text-gray-400 py-2">No medicines found</p>}
               </div>
             )}
           </div>
@@ -347,13 +249,22 @@ function FilterSidebar({ draftMedicines, setDraftMedicines, draftUsers, setDraft
           {/* To Branch */}
           <div className="rounded-2xl border border-gray-100 dark:border-[#273244]">
             <button onClick={() => setCollapseTo(!collapseTo)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#151E35] rounded-t-2xl transition-colors">
-              To
+              To Branch
               {collapseTo ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
             </button>
             {collapseTo && (
               <div className="px-4 pb-4 pt-1">
-                {FILTER_TOS.map(b => (
-                  <FilterCheckRow key={b} checked={draftTos.includes(b)} onToggle={() => toggleIn(draftTos, b, setDraftTos)} badge={b} />
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input value={toSearch} onChange={e => setToSearch(e.target.value)} placeholder="Search" className="w-full h-9 pl-9 pr-3 text-sm border border-gray-200 dark:border-[#2A2A2A] dark:bg-[#1E1E1E] rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-[3px] focus:ring-[#0F9291]/10" />
+                </div>
+                {visibleTos.map(b => (
+                  <FilterCheckRow key={b} checked={draftTos.includes(b)} onToggle={() => toggleIn(draftTos, b, setDraftTos)} badge={
+                    <span className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#0F9291]" />
+                      {b}
+                    </span>
+                  } />
                 ))}
               </div>
             )}
@@ -402,7 +313,10 @@ const thCls = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
 const tdCls = 'px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap';
 
 export default function StockTransferPage() {
-  const [rows, setRows] = useState<TransferRow[]>(INITIAL_ROWS);
+  const [rows, setRows] = useState<TransferRow[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [datePreset, setDatePreset] = useState('all');
@@ -416,11 +330,9 @@ export default function StockTransferPage() {
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [draftMedicines, setDraftMedicines] = useState<string[]>([]);
-  const [draftUsers, setDraftUsers] = useState<string[]>([]);
   const [draftTos, setDraftTos] = useState<string[]>([]);
   const [draftStatuses, setDraftStatuses] = useState<string[]>([]);
   const [filterMedicines, setFilterMedicines] = useState<string[]>([]);
-  const [filterUsers, setFilterUsers] = useState<string[]>([]);
   const [filterTos, setFilterTos] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
@@ -454,16 +366,56 @@ export default function StockTransferPage() {
     return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
 
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [trRes, prodRes, whRes] = await Promise.all([
+        StockTransfersAPI.getAll().catch(() => ({ data: [] })),
+        ProductsAPI.getAll().catch(() => ({ data: [] })),
+        WarehousesAPI.getAll().catch(() => ({ data: [] })),
+      ]);
+      const prodList: ProductOption[] = (prodRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
+      const whList: WarehouseOption[] = (whRes.data || []).map((w: any) => ({ id: w.id, name: w.name }));
+      setProducts(prodList);
+      setWarehouses(whList);
+
+      const prodName = (id?: number) => prodList.find(p => p.id === id)?.name || `Product #${id ?? '?'}`;
+      const whName = (id?: number) => whList.find(w => w.id === id)?.name || `Warehouse #${id ?? '?'}`;
+      const mapped: TransferRow[] = (trRes.data || []).map((t: any) => ({
+        id: t.id,
+        productId: t.productId,
+        item: t.productName || prodName(t.productId),
+        fromId: t.fromWarehouseId,
+        from: t.fromWarehouseName || whName(t.fromWarehouseId),
+        toId: t.toWarehouseId,
+        to: t.toWarehouseName || whName(t.toWarehouseId),
+        qty: t.quantity ?? 0,
+        reason: t.description || '',
+        status: t.status || 'Active',
+        datetime: formatDateTime(t.createdAt),
+        ts: t.createdAt ? new Date(t.createdAt).getTime() : 0,
+      }));
+      setRows(mapped);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setPage(1); }, [searchQuery, datePreset, filterMedicines, filterTos, filterStatuses, pageSize]);
+
+  const allMedicines = useMemo(() => products.map(p => p.name), [products]);
+  const allTos = useMemo(() => warehouses.map(w => w.name), [warehouses]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
     let list = rows.filter(r => {
-      if (q && !(r.id.toLowerCase().includes(q) || r.item.toLowerCase().includes(q) || r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q) || r.by.toLowerCase().includes(q) || String(r.qty).includes(q))) return false;
+      if (q && !(`${transferRef(r.id)} ${r.item} ${r.from} ${r.to}`.toLowerCase().includes(q) || String(r.qty).includes(q))) return false;
       if (datePreset !== 'all') {
         const cutoff = Date.now() - Number(datePreset) * 86400000;
         if (r.ts < cutoff) return false;
       }
       if (filterMedicines.length && !filterMedicines.includes(r.item)) return false;
-      if (filterUsers.length && !filterUsers.includes(r.by)) return false;
       if (filterTos.length && !filterTos.includes(r.to)) return false;
       if (filterStatuses.length && !filterStatuses.includes(r.status)) return false;
       return true;
@@ -477,9 +429,9 @@ export default function StockTransferPage() {
       }
     });
     return list;
-  }, [rows, searchQuery, datePreset, sortBy, filterMedicines, filterUsers, filterTos, filterStatuses]);
+  }, [rows, searchQuery, datePreset, sortBy, filterMedicines, filterTos, filterStatuses]);
 
-  const activeFilterCount = filterMedicines.length + filterUsers.length + filterTos.length + filterStatuses.length;
+  const activeFilterCount = filterMedicines.length + filterTos.length + filterStatuses.length;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -508,36 +460,66 @@ export default function StockTransferPage() {
     setDatePreset('all');
     setSortBy('date-desc');
     setFilterMedicines([]);
-    setFilterUsers([]);
     setFilterTos([]);
     setFilterStatuses([]);
     setPage(1);
   };
 
-  const handleCreate = (data: { item: string; from: string; to: string; dateISO: string; time24: string; qty: number; reason: string; by: string }) => {
-    const maxNum = rows.reduce((m, r) => Math.max(m, Number(r.id.replace('#TRA', ''))), 16);
-    const newRow: TransferRow = T(`#TRA${String(maxNum + 1).padStart(3, '0')}`, data.item, data.dateISO, data.time24, data.from, data.to, data.qty, data.by);
-    newRow.reason = data.reason;
-    newRow.ts = Date.now();
-    setRows(rs => [newRow, ...rs]);
-    setSaving(false);
-    setShowCreate(false);
+  const handleCreate = async (data: { productId: number; fromId: number; toId: number; qty: number; reason: string; status: string }) => {
+    setSaving(true);
+    try {
+      await StockTransfersAPI.create({
+        productId: data.productId,
+        fromWarehouseId: data.fromId,
+        toWarehouseId: data.toId,
+        quantity: data.qty,
+        description: data.reason || null,
+        status: data.status,
+      });
+      setShowCreate(false);
+      await loadData();
+    } catch {
+      alert('Failed to create transfer');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleEdit = (data: { item: string; from: string; to: string; dateISO: string; time24: string; qty: number; reason: string; by: string }) => {
-    setRows(rs => rs.map(r => r.id === editingRow?.id ? { ...r, item: data.item, from: data.from, to: data.to, dateISO: data.dateISO, time24: data.time24, ts: new Date(`${data.dateISO}T${data.time24}`).getTime(), qty: data.qty, reason: data.reason, by: data.by } : r));
-    setSaving(false);
-    setEditingRow(null);
+  const handleEdit = async (data: { productId: number; fromId: number; toId: number; qty: number; reason: string; status: string }) => {
+    if (!editingRow) return;
+    setSaving(true);
+    try {
+      await StockTransfersAPI.update(String(editingRow.id), {
+        productId: data.productId,
+        fromWarehouseId: data.fromId,
+        toWarehouseId: data.toId,
+        quantity: data.qty,
+        description: data.reason || null,
+        status: data.status,
+      });
+      setEditingRow(null);
+      await loadData();
+    } catch {
+      alert('Failed to update transfer');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    if (deleteTarget) setRows(rs => rs.filter(r => r.id !== deleteTarget.id));
-    setDeleteTarget(null);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await StockTransfersAPI.delete(String(deleteTarget.id));
+      setDeleteTarget(null);
+      await loadData();
+    } catch {
+      alert('Failed to delete transfer');
+    }
   };
 
   const exportCSV = () => {
-    const header = 'ID,Item,Date & Time,From,To,Quantity,By';
-    const lines = filtered.map(r => [r.id, r.item, formatDisplay(r.dateISO, r.time24), r.from, r.to, r.qty, r.by].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    const header = 'ID,Item,Date & Time,From,To,Quantity,Status,Reason';
+    const lines = filtered.map(r => [transferRef(r.id), r.item, r.datetime, r.from, r.to, r.qty, r.status, r.reason].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
     const csv = '\uFEFF' + [header, ...lines].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -548,9 +530,6 @@ export default function StockTransferPage() {
     URL.revokeObjectURL(url);
   };
 
-  const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  const avatarColor = (by: string) => AVATAR_COLORS[USERS.indexOf(by) % AVATAR_COLORS.length];
-
   const renderDropdown = (close: () => void, children: React.ReactNode) => (
     <>
       <div className="fixed inset-0 z-[1040]" onClick={close} />
@@ -559,6 +538,24 @@ export default function StockTransferPage() {
       </div>
     </>
   );
+
+  const statusPill = (s: string) => {
+    if (s === 'Active') return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+      </span>
+    );
+    if (s === 'Inactive') return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Inactive
+      </span>
+    );
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 dark:bg-[#232323] dark:text-gray-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400" /> {s}
+      </span>
+    );
+  };
 
   return (
     <div className="p-4 sm:p-6">
@@ -573,9 +570,9 @@ export default function StockTransferPage() {
             <span className="text-gray-800 dark:text-gray-100 font-medium">Stock Transfer</span>
           </nav>
           <div className="flex items-center gap-2">
-            <button onClick={resetAll} title="Refresh"
+            <button onClick={() => loadData()} title="Refresh"
               className="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 dark:border-[#2A2A2A] bg-white dark:bg-[#141B2E] text-gray-500 dark:text-gray-400 hover:text-[#0F9291] hover:border-[#0F9291]/40 transition-all">
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button onClick={toggleFullscreen} title="Maximize"
               className="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 dark:border-[#2A2A2A] bg-white dark:bg-[#141B2E] text-gray-500 dark:text-gray-400 hover:text-[#0F9291] hover:border-[#0F9291]/40 transition-all">
@@ -711,12 +708,18 @@ export default function StockTransferPage() {
                   {visibleColumns.includes('to') && <th className={thCls}>To</th>}
                   {visibleColumns.includes('item') && <th className={thCls}>Items</th>}
                   {visibleColumns.includes('qty') && <th className={`${thCls} text-right`}>Quantity</th>}
-                  {visibleColumns.includes('by') && <th className={thCls}>By</th>}
+                  {visibleColumns.includes('status') && <th className={thCls}>Status</th>}
                   <th className={`${thCls} text-right`}></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-[#1D2738]">
-                {pageRows.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-[#0F9291] mx-auto" />
+                    </td>
+                  </tr>
+                ) : pageRows.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                       No transfers found
@@ -725,29 +728,20 @@ export default function StockTransferPage() {
                 ) : (
                   pageRows.map(r => (
                     <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-[#151E35] transition-colors">
-                      <td className={`${tdCls} text-[#0F9291] font-semibold`}>{r.id}</td>
-                      {visibleColumns.includes('datetime') && <td className={tdCls}>{formatDisplay(r.dateISO, r.time24)}</td>}
+                      <td className={`${tdCls} text-[#0F9291] font-semibold`}>{transferRef(r.id)}</td>
+                      {visibleColumns.includes('datetime') && <td className={tdCls}>{r.datetime}</td>}
                       {visibleColumns.includes('from') && <td className={`${tdCls} font-medium text-gray-800 dark:text-gray-100`}>{r.from}</td>}
                       {visibleColumns.includes('to') && <td className={`${tdCls} font-medium text-gray-800 dark:text-gray-100`}>{r.to}</td>}
                       {visibleColumns.includes('item') && <td className={tdCls}>{r.item}</td>}
                       {visibleColumns.includes('qty') && <td className={`${tdCls} text-right font-medium`}>{r.qty}</td>}
-                      {visibleColumns.includes('by') && (
-                        <td className={tdCls}>
-                          <div className="flex items-center gap-2.5 font-medium text-gray-800 dark:text-gray-100">
-                            <span className={`w-8 h-8 rounded-full ${avatarColor(r.by)} text-white text-xs font-semibold flex items-center justify-center flex-shrink-0`}>
-                              {getInitials(r.by)}
-                            </span>
-                            {r.by}
-                          </div>
-                        </td>
-                      )}
+                      {visibleColumns.includes('status') && <td className={tdCls}>{statusPill(r.status)}</td>}
                       <td className={`${tdCls} text-right`}>
                         <div className="relative inline-block">
-                          <button onClick={() => setMoreOpen(moreOpen === r.id ? null : r.id)}
+                          <button onClick={() => setMoreOpen(moreOpen === String(r.id) ? null : String(r.id))}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-[#232323] transition-all" aria-label="Actions">
                             <EllipsisVertical className="w-4 h-4" />
                           </button>
-                          {moreOpen === r.id && (
+                          {moreOpen === String(r.id) && (
                             <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-[#1F1F1F] border border-gray-200 dark:border-[#2A2A2A] rounded-xl shadow-xl py-1.5 z-[1050] animate-dialog-field">
                               <button onClick={() => { setMoreOpen(null); setEditingRow(r); setShowCreate(true); }} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#232323] hover:text-[#0F9291] transition-colors">
                                 <Edit className="w-4 h-4" /> Edit
@@ -799,6 +793,8 @@ export default function StockTransferPage() {
           mode={editingRow ? 'edit' : 'create'}
           initial={editingRow}
           saving={saving}
+          products={products}
+          warehouses={warehouses}
           onClose={() => { setShowCreate(false); setEditingRow(null); }}
           onSave={editingRow ? handleEdit : handleCreate}
         />
@@ -808,7 +804,7 @@ export default function StockTransferPage() {
         <GlobalConfirmModal
           onClose={() => setDeleteTarget(null)}
           title="Delete Confirmation"
-          message={<>Are you sure you want to delete <strong>&ldquo;{deleteTarget.item}&rdquo;</strong> transfer <strong>{deleteTarget.id}</strong>?</>}
+          message={<>Are you sure you want to delete <strong>&ldquo;{deleteTarget.item}&rdquo;</strong> transfer <strong>{transferRef(deleteTarget.id)}</strong>?</>}
           confirmLabel="Delete"
           danger
           onConfirm={handleDelete}
@@ -817,14 +813,19 @@ export default function StockTransferPage() {
 
       {filterOpen && (
         <FilterSidebar
+          allMedicines={allMedicines}
+          allTos={allTos}
           draftMedicines={draftMedicines} setDraftMedicines={setDraftMedicines}
-          draftUsers={draftUsers} setDraftUsers={setDraftUsers}
           draftTos={draftTos} setDraftTos={setDraftTos}
           draftStatuses={draftStatuses} setDraftStatuses={setDraftStatuses}
           onCancel={() => setFilterOpen(false)}
-          onApply={() => { setFilterMedicines(draftMedicines); setFilterUsers(draftUsers); setFilterTos(draftTos); setFilterStatuses(draftStatuses); setFilterOpen(false); }}
+          onApply={() => { setFilterMedicines(draftMedicines); setFilterTos(draftTos); setFilterStatuses(draftStatuses); setFilterOpen(false); }}
         />
       )}
     </div>
   );
+}
+
+function transferRef(id: number): string {
+  return `#TRA${String(id).padStart(3, '0')}`;
 }

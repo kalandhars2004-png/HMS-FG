@@ -120,7 +120,7 @@ export default function SettingsPage() {
           {activeTab === 'localization' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <SelectField label="Currency" value={form.currency} onChange={v => setForm(f => ({ ...f, currency: v }))}
-                options={['INR', 'USD', 'EUR', 'GBP', 'AUD', 'CAD']} />
+                options={['INR']} />
               <Field label="Currency Symbol" value={form.currencySymbol} onChange={v => setForm(f => ({ ...f, currencySymbol: v }))} />
               <SelectField label="Date Format" value={form.dateFormat} onChange={v => setForm(f => ({ ...f, dateFormat: v }))}
                 options={['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD']} />
