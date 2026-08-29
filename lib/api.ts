@@ -1,7 +1,8 @@
 // API configuration for Spring Boot REST API
 import { notifyLoaderBegin, notifyLoaderEnd, isSilentScopeActive } from '@/components/ui/global-loader/loader-bridge';
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api').replace(/\/+$/, '');
+const _rawBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api').replace(/\/+$/, '');
+const API_BASE_URL = _rawBase.endsWith('/api') ? _rawBase : `${_rawBase}/api`;
 
 // Spring Boot Response wrapper: { status, message, data?, categories?, category?, ... }
 // Dynamic envelope — any intentional for flexible brand/warehouse/etc keys
