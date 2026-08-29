@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Users, UserCheck, Shield, Building2, Search, RefreshCw, House, Edit2, CheckCircle2, AlertTriangle, X, MoreVertical, Plus, UserPlus, ArrowUpToLine, LayoutGrid, ListTodo, Mail, Phone, Trash2, UserCog, UsersRound } from '@/components/ui/LucideIcon';
+import { Users, UserCheck, Shield, Building2, Search, RefreshCw, House, Edit2, CheckCircle2, AlertTriangle, X, MoreVertical, Plus, UserPlus, ArrowUpToLine, LayoutGrid, ListTodo, Mail, Phone, Trash2, UserCog, UsersRound, ChevronDown, Check } from '@/components/ui/LucideIcon';
 import { BranchesAPI, UsersAPI } from '@/lib/api';
 import { useBranch } from '@/lib/branch-context';
 import { Branch } from '@/types';
@@ -73,6 +73,8 @@ export default function UsersManagementPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [form, setForm] = useState({ name: '', email: '', role: 'STAFF', password: '', branchId: '' });
+  const [openBranchFor, setOpenBranchFor] = useState<string | null>(null);
+  const [branchQuery, setBranchQuery] = useState('');
 
   const addToast = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
@@ -480,16 +482,39 @@ export default function UsersManagementPage() {
                             {isSuper ? (
                               <span className="inline-flex items-center gap-1.5 text-xs text-purple-600 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 font-medium">Global — no branch</span>
                             ) : (
-                              <div className="flex items-center gap-2">
-                                <select
-                                  value={String(u.branchId || '')}
-                                  onChange={e => handleAssign(String(u.id), e.target.value)}
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() => { setOpenBranchFor(openBranchFor===String(u.id)?null:String(u.id)); setBranchQuery(''); }}
                                   disabled={saving === String(u.id)}
-                                  className="h-8 pl-2.5 pr-8 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#0F9291] cursor-pointer disabled:opacity-50"
+                                  className="w-[200px] h-9 px-3 pr-8 rounded-xl border bg-white text-left text-xs flex items-center gap-2 hover:border-gray-300 focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/10 transition-all disabled:opacity-50 shadow-sm"
                                 >
-                                  <option value="">— No branch —</option>
-                                  {branches.map((b: any) => <option key={String(b.id)} value={String(b.id)}>{b.name} ({b.code})</option>)}
-                                </select>
+                                  <span className="w-7 h-7 rounded-lg bg-[#0F9291]/10 flex items-center justify-center shrink-0"><Building2 className="w-3.5 h-3.5 text-[#0F9291]"/></span>
+                                  <span className={`flex-1 truncate ${u.branchId?'text-gray-900 font-medium':'text-gray-400'}`}>{branch ? `${branch.name}` : '— No branch —'}</span>
+                                  <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform ${openBranchFor===String(u.id)?'rotate-180':''}`}/>
+                                </button>
+                                {openBranchFor===String(u.id) && (
+                                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden animate-slideDown">
+                                    <div className="p-2 border-b border-gray-100">
+                                      <div className="relative">
+                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                        <input autoFocus value={branchQuery} onChange={e=> setBranchQuery(e.target.value)} placeholder="Search branch..." className="w-full h-8 pl-8 pr-3 rounded-lg border border-gray-200 text-xs outline-none focus:border-[#0F9291]"/>
+                                      </div>
+                                    </div>
+                                    <div className="max-h-[180px] overflow-y-auto py-1">
+                                      <button onClick={()=> { handleAssign(String(u.id), ''); setOpenBranchFor(null); }} className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-gray-50 ${!u.branchId?'bg-[#0F9291]/5 text-[#0F9291]':''}`}>
+                                        <span className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center"><X className="w-3.5 h-3.5 text-amber-600"/></span> — No branch — {!u.branchId && <Check className="w-3.5 h-3.5 ml-auto text-[#0F9291]"/>}
+                                      </button>
+                                      {branches.filter((b:any)=> !branchQuery || b.name.toLowerCase().includes(branchQuery.toLowerCase()) || b.code.toLowerCase().includes(branchQuery.toLowerCase())).map((b:any)=>(
+                                        <button key={String(b.id)} onClick={()=> { handleAssign(String(u.id), String(b.id)); setOpenBranchFor(null); }} className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-50 ${String(b.id)===String(u.branchId)?'bg-[#0F9291]/5':''}`}>
+                                          <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${String(b.id)===String(u.branchId)?'bg-[#0F9291] text-white':'bg-gray-100 text-gray-500'}`}><Building2 className="w-3.5 h-3.5"/></span>
+                                          <span className="flex-1 min-w-0"><span className="block text-xs font-medium truncate">{b.name}</span><span className="block text-[11px] text-gray-400 truncate">{b.code} • {b.city||''}</span></span>
+                                          {String(b.id)===String(u.branchId) && <Check className="w-3.5 h-3.5 text-[#0F9291] shrink-0"/>}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </td>
@@ -570,10 +595,27 @@ export default function UsersManagementPage() {
             </div>
             <div>
               <label className={modalLabelCls}>Branch</label>
-              <select className={modalSelectCls} value={form.branchId} onChange={e => setForm(p => ({ ...p, branchId: e.target.value }))}>
-                <option value="">— No branch —</option>
-                {branches.map((b: any) => <option key={String(b.id)} value={String(b.id)}>{b.name} ({b.code})</option>)}
-              </select>
+              <div className="relative">
+                <button type="button" onClick={()=> setOpenBranchFor(openBranchFor==='modal'?null:'modal')} className="w-full h-11 px-3 pr-9 rounded-xl border border-gray-200 bg-white text-left text-sm flex items-center gap-2 hover:border-gray-300 focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/10">
+                  <span className="w-8 h-8 rounded-lg bg-[#0F9291]/10 flex items-center justify-center"><Building2 className="w-4 h-4 text-[#0F9291]"/></span>
+                  <span className={`flex-1 truncate ${form.branchId?'text-gray-900':'text-gray-400'}`}>{form.branchId ? (branches.find((b:any)=> String(b.id)===form.branchId)?.name || `Branch ${form.branchId}`) : '— No branch —'}</span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 ${openBranchFor==='modal'?'rotate-180':''}`}/>
+                </button>
+                {openBranchFor==='modal' && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+                    <div className="max-h-[180px] overflow-y-auto py-1">
+                      <button type="button" onClick={()=> { setForm(p=>({...p,branchId:''})); setOpenBranchFor(null); }} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 ${!form.branchId?'bg-[#0F9291]/5 text-[#0F9291]':''}`}>— No branch —</button>
+                      {branches.map((b:any)=>(
+                        <button key={String(b.id)} type="button" onClick={()=> { setForm(p=>({...p,branchId:String(b.id)})); setOpenBranchFor(null); }} className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-50 ${form.branchId===String(b.id)?'bg-[#0F9291]/5':''}`}>
+                          <span className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center"><Building2 className="w-3.5 h-3.5 text-gray-500"/></span>
+                          <span className="flex-1 min-w-0"><span className="block text-sm font-medium truncate">{b.name}</span><span className="block text-xs text-gray-400 truncate">{b.code}</span></span>
+                          {form.branchId===String(b.id) && <Check className="w-4 h-4 text-[#0F9291]"/>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <p className={modalHintCls}>Super Admin users should not be assigned to a branch.</p>
             </div>
           </div>
