@@ -58,6 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       localStorage.setItem('user', JSON.stringify(backendUser));
       localStorage.setItem('authToken', res.token || '');
+      // httpOnly cookie also set by backend via Set-Cookie; keep localStorage for
+      // Authorization header until backend fully switches to cookie-only.
+      // No JS cookie here — that would re-expose httpOnly protection to XSS.
       // Branch context: super-admin may have null; branch users get their branch auto-selected
       if (backendUser.branchId) {
         localStorage.setItem('selectedBranchId', backendUser.branchId);
@@ -80,6 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('user');
     localStorage.removeItem('authToken');
     localStorage.removeItem('selectedBranchId');
+    try { document.cookie = 'authToken=; Path=/; Max-Age=0; SameSite=Lax'; } catch {}
+    // Clear httpOnly cookie server-side (fire-and-forget)
+    AuthAPI.logout().catch(() => {});
     // Per-session UI state must not leak across accounts — the next person to
     // sign in should get their own restock warning.
     sessionStorage.removeItem('ims.stockAlert.seen');

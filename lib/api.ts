@@ -4,6 +4,8 @@ import { notifyLoaderBegin, notifyLoaderEnd, isSilentScopeActive } from '@/compo
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
 
 // Spring Boot Response wrapper: { status, message, data?, categories?, category?, ... }
+// Dynamic envelope — any intentional for flexible brand/warehouse/etc keys
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ApiResponse {
   status: number;
   message: string;
@@ -55,20 +57,54 @@ export class ApiClient {
 
     if (!silent) notifyLoaderBegin();
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers, credentials: 'include' });
 
       if (!response.ok) {
         if (response.status === 401 && typeof window !== 'undefined') {
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
+          localStorage.removeItem('selectedBranchId');
           sessionStorage.removeItem('ims.stockAlert.seen');
-          window.location.href = '/login';
+          try { document.cookie = 'authToken=; Path=/; Max-Age=0; SameSite=Lax'; } catch {}
+          // Also clear httpOnly cookie via backend (best-effort, no await)
+          try { fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }); } catch {}
+          // Avoid redirect loop if already on /login
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
         }
-        const body = await response.text();
-        throw new Error(body || `API Error: ${response.status}`);
+        // Try to parse structured error: {message, error, msg} or plain text
+        let errorMessage = `API Error: ${response.status}`;
+        try {
+          const text = await response.text();
+          if (text) {
+            try {
+              const json = JSON.parse(text);
+              errorMessage = json.message || json.error || json.msg || text;
+            } catch {
+              errorMessage = text;
+            }
+          }
+        } catch {}
+        throw new Error(errorMessage);
       }
 
-      return response.json();
+      // Handle 204 No Content or empty body (e.g., DELETE)
+      const contentType = response.headers.get('content-type') || '';
+      const text = await response.text();
+      if (!text) return {} as T;
+      if (contentType.includes('application/json')) {
+        try {
+          return JSON.parse(text) as T;
+        } catch {
+          return text as unknown as T;
+        }
+      }
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as unknown as T;
+      }
     } finally {
       // Always release — success, error, or network failure never leave the loader stuck.
       if (!silent) notifyLoaderEnd();
@@ -79,12 +115,12 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'GET' });
   }
 
-  static post<T>(endpoint: string, data?: any): Promise<T> {
+  static post<T>(endpoint: string, data?: unknown): Promise<T> {
     const body = data instanceof FormData ? data : (data ? JSON.stringify(data) : undefined);
     return this.request<T>(endpoint, { method: 'POST', body });
   }
 
-  static put<T>(endpoint: string, data: any): Promise<T> {
+  static put<T>(endpoint: string, data: unknown): Promise<T> {
     const body = data instanceof FormData ? data : JSON.stringify(data);
     const headers: Record<string, string> = {};
     if (!(data instanceof FormData)) headers['Content-Type'] = 'application/json';
@@ -96,17 +132,19 @@ export class ApiClient {
   }
 }
 
-// Extract entity list from response wrapper
-function extractList(res: any, key: string) {
+// Extract entity list from response wrapper — raw JSON boundary, any is intentional
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractList(res: any, key: string): any[] {
   if (Array.isArray(res)) return res;
   if (res && Array.isArray(res[key])) return res[key];
-  if (res && res.data && Array.isArray(res.data)) return res.data;
+  if (res && res.data !== undefined && Array.isArray(res.data)) return res.data;
   return [];
 }
 
-function extractSingle(res: any, key: string) {
-  if (res && res[key]) return res[key];
-  if (res && res.data) return res.data;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractSingle(res: any, key: string): any {
+  if (res && res[key] !== undefined) return res[key];
+  if (res && res.data !== undefined) return res.data;
   return res;
 }
 
@@ -114,8 +152,10 @@ function extractSingle(res: any, key: string) {
 export const AuthAPI = {
   login: (email: string, password: string) =>
     ApiClient.post<ApiResponse>('/auth/login', { email, password }),
-  register: (data: any) =>
+  register: (data: unknown) =>
     ApiClient.post<ApiResponse>('/auth/register', data),
+  logout: () =>
+    ApiClient.post<ApiResponse>('/auth/logout', {}),
 };
 
 // ---- Categories ----
@@ -128,8 +168,8 @@ export const CategoriesAPI = {
     const res = await ApiClient.get<ApiResponse>(`/categories/${id}`);
     return extractSingle(res, 'category');
   },
-  create: (data: any) => ApiClient.post('/categories/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/categories/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/categories/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/categories/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/categories/delete/${id}`),
 };
 
@@ -143,8 +183,8 @@ export const BrandsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/brands/${id}`);
     return extractSingle(res, 'brand');
   },
-  create: (data: any) => ApiClient.post('/brands/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/brands/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/brands/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/brands/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/brands/delete/${id}`),
 };
 
@@ -175,8 +215,8 @@ export const UnitsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/units/${id}`);
     return extractSingle(res, 'unit');
   },
-  create: (data: any) => ApiClient.post('/units/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/units/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/units/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/units/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/units/delete/${id}`),
 };
 
@@ -190,8 +230,8 @@ export const VariantsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/variants/${id}`);
     return extractSingle(res, 'variant');
   },
-  create: (data: any) => ApiClient.post('/variants/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/variants/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/variants/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/variants/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/variants/delete/${id}`),
 };
 
@@ -205,13 +245,13 @@ export const ProductsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/products/${id}`);
     return extractSingle(res, 'product');
   },
-  create: (data: any) => ApiClient.post('/products/add', data),
-  update: (id: string, data: any) => {
+  create: (data: unknown) => ApiClient.post('/products/add', data),
+  update: (id: string, data: unknown) => {
     if (data instanceof FormData) {
       data.append('productId', id);
       return ApiClient.put('/products/update', data);
     }
-    return ApiClient.put('/products/update', { ...data, productId: id });
+    return ApiClient.put('/products/update', { ...(data as Record<string, unknown>), productId: id });
   },
   delete: (id: string) => ApiClient.delete(`/products/delete/${id}`),
 };
@@ -226,8 +266,8 @@ export const SuppliersAPI = {
     const res = await ApiClient.get<ApiResponse>(`/suppliers/${id}`);
     return extractSingle(res, 'supplier');
   },
-  create: (data: any) => ApiClient.post('/suppliers/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/suppliers/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/suppliers/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/suppliers/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/suppliers/delete/${id}`),
 };
 
@@ -241,8 +281,8 @@ export const WarehousesAPI = {
     const res = await ApiClient.get<ApiResponse>(`/warehouses/${id}`);
     return extractSingle(res, 'warehouse');
   },
-  create: (data: any) => ApiClient.post('/warehouses/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/warehouses/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/warehouses/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/warehouses/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/warehouses/delete/${id}`),
 };
 
@@ -256,8 +296,8 @@ export const RacksAPI = {
     const res = await ApiClient.get<ApiResponse>(`/racks/${id}`);
     return extractSingle(res, 'rack');
   },
-  create: (data: any) => ApiClient.post('/racks/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/racks/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/racks/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/racks/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/racks/delete/${id}`),
 };
 
@@ -271,8 +311,8 @@ export const EquipmentAPI = {
     const res = await ApiClient.get<ApiResponse>(`/equipment/${id}`);
     return extractSingle(res, 'equipment');
   },
-  create: (data: any) => ApiClient.post('/equipment/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/equipment/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/equipment/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/equipment/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/equipment/delete/${id}`),
 };
 
@@ -282,7 +322,7 @@ export const UsersAPI = {
     const res = await ApiClient.get<ApiResponse>('/users/all');
     return { data: extractList(res, 'users') };
   },
-  update: (id: string, data: any) => ApiClient.put(`/users/update/${id}`, data),
+  update: (id: string, data: unknown) => ApiClient.put(`/users/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/users/delete/${id}`),
   // Returns the standard envelope with a UserDTO under `user`. It used to return the
   // raw JPA entity — including the password hash — at the top level.
@@ -303,8 +343,8 @@ export const StockTransfersAPI = {
     const res = await ApiClient.get<ApiResponse>(`/stock-transfers/${id}`);
     return extractSingle(res, 'stockTransfer');
   },
-  create: (data: any) => ApiClient.post('/stock-transfers/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/stock-transfers/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/stock-transfers/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/stock-transfers/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/stock-transfers/delete/${id}`),
 };
 
@@ -318,8 +358,8 @@ export const StockAdjustmentsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/stock-adjustments/${id}`);
     return extractSingle(res, 'stockAdjustment');
   },
-  create: (data: any) => ApiClient.post('/stock-adjustments/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/stock-adjustments/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/stock-adjustments/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/stock-adjustments/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/stock-adjustments/delete/${id}`),
 };
 
@@ -333,8 +373,8 @@ export const PurchaseReturnsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/purchase-returns/${id}`);
     return extractSingle(res, 'purchaseReturn');
   },
-  create: (data: any) => ApiClient.post('/purchase-returns/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/purchase-returns/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/purchase-returns/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/purchase-returns/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/purchase-returns/delete/${id}`),
 };
 
@@ -348,8 +388,8 @@ export const BatchesAPI = {
     const res = await ApiClient.get<ApiResponse>(`/batches/${id}`);
     return extractSingle(res, 'batch');
   },
-  create: (data: any) => ApiClient.post('/batches/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/batches/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/batches/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/batches/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/batches/delete/${id}`),
   getExpiringBefore: async (date: string) => {
     const res = await ApiClient.get<ApiResponse>(`/batches/expiring-before?date=${date}`);
@@ -370,8 +410,8 @@ export const CustomersAPI = {
     const res = await ApiClient.get<ApiResponse>(`/customers/branch/${branchId}`);
     return { data: extractList(res, 'customers') };
   },
-  create: (data: any) => ApiClient.post('/customers/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/customers/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/customers/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/customers/update/${id}`, data),
   delete: (id: string) => ApiClient.delete(`/customers/delete/${id}`),
 };
 
@@ -385,7 +425,7 @@ export const InvoicesAPI = {
     const res = await ApiClient.get<ApiResponse>(`/invoices/${id}`);
     return extractSingle(res, 'invoice');
   },
-  create: (data: any) => ApiClient.post('/invoices/add', data),
+  create: (data: unknown) => ApiClient.post('/invoices/add', data),
   generateFromSO: (soId: string) => ApiClient.post(`/invoices/from-so/${soId}`, {}),
   updateStatus: (id: string, status: string) => ApiClient.put(`/invoices/status/${id}`, { status }),
   delete: (id: string) => ApiClient.delete(`/invoices/delete/${id}`),
@@ -400,7 +440,7 @@ export const SalesOrdersAPI = {
     const res = await ApiClient.get<ApiResponse>(`/sales-orders/${id}`);
     return extractSingle(res, 'salesOrder');
   },
-  create: (data: any) => ApiClient.post('/sales-orders/add', data),
+  create: (data: unknown) => ApiClient.post('/sales-orders/add', data),
   updateStatus: (id: string, status: string) => ApiClient.put(`/sales-orders/status/${id}`, { status }),
   updatePayment: (id: string, paymentStatus: string) => ApiClient.put(`/sales-orders/payment/${id}`, { paymentStatus }),
   delete: (id: string) => ApiClient.delete(`/sales-orders/delete/${id}`),
@@ -416,7 +456,7 @@ export const StockCountsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/stock-counts/${id}`);
     return extractSingle(res, 'stockCount');
   },
-  create: (data: any) => ApiClient.post('/stock-counts/add', data),
+  create: (data: unknown) => ApiClient.post('/stock-counts/add', data),
   updateStatus: (id: string, status: string) => ApiClient.put(`/stock-counts/status/${id}`, { status }),
   updateItemCount: (countId: string, itemId: string, data: { actualQuantity: number }) =>
     ApiClient.put(`/stock-counts/${countId}/items/${itemId}`, data),
@@ -425,7 +465,7 @@ export const StockCountsAPI = {
 };
 
 export const ReorderAPI = {
-  setPoint: (data: any) => ApiClient.post('/reorder/points/add', data),
+  setPoint: (data: unknown) => ApiClient.post('/reorder/points/add', data),
   getPoints: async () => {
     const res = await ApiClient.get<ApiResponse>('/reorder/points');
     return { data: extractList(res, 'reorderPoints') };
@@ -458,14 +498,14 @@ export const TransactionsAPI = {
     const res = await ApiClient.get<ApiResponse>(`/transactions/by-month-year?month=${month}&year=${year}`);
     return { data: extractList(res, 'transactions') };
   },
-  purchase: (data: any) => ApiClient.post('/transactions/purchase', data),
-  sell: (data: any) => ApiClient.post('/transactions/sell', data),
-  returnToSupplier: (data: any) => ApiClient.post('/transactions/return', data),
+  purchase: (data: unknown) => ApiClient.post('/transactions/purchase', data),
+  sell: (data: unknown) => ApiClient.post('/transactions/sell', data),
+  returnToSupplier: (data: unknown) => ApiClient.post('/transactions/return', data),
   updateStatus: (id: string, status: string) => ApiClient.put(`/transactions/update/${id}`, { status }),
 };
 
 export const POSAPI = {
-  openSession: async (data: any) => {
+  openSession: async (data: unknown) => {
     const res = await ApiClient.post<ApiResponse>('/pos/sessions/open', data);
     return extractSingle(res, 'posSession');
   },
@@ -479,7 +519,7 @@ export const POSAPI = {
     const res = await ApiClient.get<ApiResponse>('/pos/sessions');
     return { data: extractList(res, 'posSessions') };
   },
-  addTransaction: (sessionId: string, data: any) =>
+  addTransaction: (sessionId: string, data: unknown) =>
     ApiClient.post(`/pos/sessions/${sessionId}/transaction`, data),
   getTransactions: async (sessionId: string) => {
     const res = await ApiClient.get<ApiResponse>(`/pos/sessions/${sessionId}/transactions`);
@@ -525,8 +565,8 @@ export const BranchesAPI = {
     const res = await ApiClient.get<ApiResponse>(`/branches/${id}`);
     return extractSingle(res, 'branch');
   },
-  create: (data: any) => ApiClient.post('/branches/add', data),
-  update: (id: string, data: any) => ApiClient.put(`/branches/update/${id}`, data),
+  create: (data: unknown) => ApiClient.post('/branches/add', data),
+  update: (id: string, data: unknown) => ApiClient.put(`/branches/update/${id}`, data),
   disable: (id: string) => ApiClient.put(`/branches/disable/${id}`, {}),
   archive: (id: string) => ApiClient.put(`/branches/archive/${id}`, {}),
   assignManager: (branchId: string, managerId: string) => ApiClient.put(`/branches/${branchId}/manager/${managerId}`, {}),
@@ -582,3 +622,4 @@ export const StockMovementsAPI = {
     };
   },
 };
+
