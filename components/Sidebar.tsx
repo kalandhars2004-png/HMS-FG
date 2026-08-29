@@ -12,6 +12,7 @@ import {
   NAV_SECTIONS, canSeeSection, canSeeItem, ROLE_LABELS, type NavItem,
 } from '@/components/sidebar/nav';
 import BranchSwitcher from '@/components/BranchSwitcher';
+import { useBranch } from '@/lib/branch-context';
 
 /* ------------------------------------------------------------------ */
 /* Design tokens — dark pharmacy-POS teal.                              */
@@ -253,6 +254,7 @@ export default function Sidebar() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { isSuperAdmin } = useBranch();
   const role = user?.role;
 
   const [collapsed, setCollapsed] = useState<boolean>(() => Stored('ims.sidebar.collapsed', false));
@@ -540,13 +542,13 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Branch switcher (§28-29) */}
-        {!collapsed && (
+        {/* Branch switcher (§28-29) — hidden for SuperAdmin daa, not good to show shifting dropdown in sidebar */}
+        {!isSuperAdmin && !collapsed && (
           <div className="shrink-0 px-3" style={{ paddingLeft: 26, paddingRight: 18, marginTop: 12 }}>
             <BranchSwitcher />
           </div>
         )}
-        {collapsed && (
+        {!isSuperAdmin && collapsed && (
           <div className="shrink-0 flex justify-center" style={{ marginTop: 12 }}>
             <div className="w-9 h-9 rounded-xl bg-[#0A3B38] flex items-center justify-center text-[#00A6A6] text-xs font-bold">
               {(user?.branchId ? 'B' : 'A')}
