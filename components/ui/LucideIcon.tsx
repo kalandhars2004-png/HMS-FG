@@ -167,4 +167,5 @@ export {
   X,
   XCircle,
   Zap,
+  ExternalLink,
 } from 'lucide-react';

@@ -533,6 +533,38 @@ export const BranchesAPI = {
   removeManager: (branchId: string) => ApiClient.delete(`/branches/${branchId}/manager`),
 };
 
+// ---- Alerts / Notifications (real, branch-aware) ----
+export const AlertsAPI = {
+  getUnread: async () => {
+    const res = await ApiClient.get<ApiResponse>('/alerts/unread');
+    return { data: extractList(res, 'alerts') };
+  },
+  getAll: async (params?: { page?: number; size?: number; type?: string; unread?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.page !== undefined) qs.set('page', String(params.page));
+    if (params?.size !== undefined) qs.set('size', String(params.size));
+    if (params?.type) qs.set('type', params.type);
+    if (params?.unread !== undefined) qs.set('unread', String(params.unread));
+    const q = qs.toString();
+    // Use paginated endpoint if params, else legacy /all
+    if (q) {
+      const res = await ApiClient.get<ApiResponse>(`/alerts${q ? `?${q}` : ''}`);
+      return { data: extractList(res, 'alerts'), totalPages: res.totalPages ?? 1, totalElements: res.totalElements ?? 0 };
+    }
+    const res = await ApiClient.get<ApiResponse>('/alerts/all');
+    return { data: extractList(res, 'alerts') };
+  },
+  getUnreadCount: async () => {
+    const res = await ApiClient.get<ApiResponse>('/alerts/count');
+    // Backend returns message with count string, or data
+    const c = res.message || res.data || '0';
+    return { count: Number(c) || 0 };
+  },
+  markAsRead: (id: string|number) => ApiClient.put(`/alerts/read/${id}`, {}),
+  markAllAsRead: () => ApiClient.put('/alerts/read-all', {}),
+  check: () => ApiClient.post('/alerts/check', {}),
+};
+
 // ---- Stock Movements (Inventory Logs) ----
 export const StockMovementsAPI = {
   getAll: async (params?: { page?: number; size?: number; searchText?: string }) => {

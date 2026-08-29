@@ -5,22 +5,12 @@ import { usePathname } from 'next/navigation';
 import {
   Search, Bell, Settings, ChevronDown, LogOut, Command,
   UserCog, BarChart3, Pill, Moon, Sun,
-  Building2, Database, ShoppingCart,
+  Building2, Database, ShoppingCart, Package, AlertTriangle, Clock, Ban, TrendingUp, CheckCheck,
 } from '@/components/ui/LucideIcon';
 import { useTheme } from '@/lib/theme-context';
 import { isAnyModalOpen } from '@/lib/modal-guard';
-
-interface Notification {
-  id: string;
-  icon: any;
-  iconBg: string;
-  iconBorder: string;
-  title: string;
-  description: string;
-  time: string;
-}
-
-const notifications: Notification[] = [];
+import { AlertsAPI } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 
 function useOutsideClick(refs: React.RefObject<HTMLElement | null>[], handler: () => void) {
   useEffect(() => {
@@ -110,15 +100,72 @@ function getPageTitle(pathname: string): string {
   return 'Dashboard';
 }
 
+function timeAgo(iso?: string) {
+  if (!iso) return 'Just now';
+  const d = new Date(iso);
+  const s = Math.floor((Date.now() - d.getTime())/1000);
+  if (s < 60) return 'Just now';
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+}
+function notifIcon(type?: string, severity?: string): { Icon:any, bg:string, border:string } {
+  const t = String(type||'').toUpperCase();
+  const s = String(severity||'').toUpperCase();
+  if (t.includes('OUT_OF_STOCK')) return { Icon: Ban, bg:'#FFEDEA', border:'#FBCAC1' };
+  if (t.includes('LOW_STOCK')) return { Icon: AlertTriangle, bg:'#FFF1EB', border:'#FED5C5' };
+  if (t.includes('EXPIR')) return { Icon: Clock, bg:'#FFF6ED', border:'#FFCFA5' };
+  if (t.includes('SALE')) return { Icon: TrendingUp, bg:'#FFF6ED', border:'#FFCFA5' };
+  if (t.includes('PURCHASE')) return { Icon: ShoppingCart, bg:'#EAF0FF', border:'#C2D2FF' };
+  if (t.includes('PAYMENT')) return { Icon: s==='SUCCESS'? CheckCheck : AlertTriangle, bg: s==='SUCCESS'?'#EAFBF0':'#FFEDEA', border: s==='SUCCESS'?'#B6E5C8':'#FBCAC1' };
+  return { Icon: Package, bg:'#F4F6FA', border:'#E5E7EB' };
+}
+function notifHref(a:any): string {
+  const t = String(a.type||'').toUpperCase();
+  if (t.includes('STOCK') || t.includes('PRODUCT')) return `/medicines`;
+  if (t.includes('BATCH') || t.includes('EXPIR')) return `/batch-management`;
+  if (t.includes('SALE')) return `/sales/invoices`;
+  if (t.includes('PURCHASE')) return `/purchases`;
+  if (t.includes('PAYMENT')) return `/sales/invoices`;
+  if (t.includes('USER')) return `/users`;
+  return `/dashboard`;
+}
+
 export default function Navbar() {
   const { dark, toggleTheme } = useTheme();
   const pathname = usePathname();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [hasNew, setHasNew] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Real notification polling — every 30s, branch-aware via ApiClient X-Branch-Id
+  const fetchCount = async () => {
+    try { const r = await AlertsAPI.getUnreadCount(); const c = r.count ?? 0; setNotifCount(prev=> { if(c>prev) setHasNew(true); return c; }); setTimeout(()=> setHasNew(false), 2000); } catch {}
+  };
+  const fetchNotifs = async () => {
+    setNotifLoading(true);
+    try { const r = await AlertsAPI.getUnread(); setNotifs((r.data||[]).slice(0,8)); } catch {} finally { setNotifLoading(false); }
+  };
+  useEffect(()=>{ fetchCount(); const id=setInterval(fetchCount, 30000); const onBranch=()=> fetchCount(); window.addEventListener('ims:branch-changed', onBranch); window.addEventListener('focus', fetchCount); return()=>{ clearInterval(id); window.removeEventListener('ims:branch-changed', onBranch); window.removeEventListener('focus', fetchCount); }; }, []);
+  useEffect(()=>{ if(showNotifications) fetchNotifs(); }, [showNotifications]);
+
+  const markAllRead = async () => {
+    try { await AlertsAPI.markAllAsRead(); setNotifs(prev=> prev.map(n=> ({...n, read:true}))); setNotifCount(0); } catch {}
+  };
+  const handleNotifClick = async (n:any) => {
+    try { if(!n.read) { await AlertsAPI.markAsRead(String(n.id)); setNotifCount(c=> Math.max(0,c-1)); setNotifs(prev=> prev.map(x=> x.id===n.id? {...x, read:true}:x)); } } catch {}
+    setShowNotifications(false);
+    router.push(notifHref(n));
+  };
 
   const notifRef = useRef<HTMLDivElement>(null);
   const notifBtnRef = useRef<HTMLButtonElement>(null);
@@ -193,14 +240,18 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Notifications */}
+          {/* Notifications — REAL, branch-aware, polled */}
           <div className="flex items-center relative">
             <button ref={notifBtnRef} onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false); setShowSettings(false); }}
               className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 dark:border-[#2a2a38] bg-white dark:bg-[#1a1a24] cursor-pointer relative hover:bg-gray-50 dark:hover:bg-[#222230] hover:shadow-sm transition-all duration-250"
               style={{ color: showNotifications ? '#0F9291' : '#101828' }}
             >
-              <Bell className="w-[18px] h-[18px]" />
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse-dot" />
+              <Bell className={`w-[18px] h-[18px] ${hasNew?'animate-bounce':''}`} />
+              {notifCount > 0 && (
+                <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white rounded-full border-2 border-white ${hasNew?'animate-pulse':''}`} style={{ background: notifCount>0 && notifs.some((n:any)=> String(n.severity).toUpperCase()==='CRITICAL') ? '#EF4444' : '#EF4444' }}>
+                  {notifCount > 99 ? '99+' : notifCount}
+                </span>
+              )}
             </button>
 
             {showNotifications && (
@@ -209,24 +260,47 @@ export default function Navbar() {
                 style={{ boxShadow: '0 20px 60px rgba(15,23,42,0.12)' }}
               >
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                  <h5 className="m-0 text-base font-semibold text-gray-900 dark:text-white">Notifications</h5>
-                  <button className="text-sm font-medium text-[#0F9291] underline border-0 bg-transparent cursor-pointer p-0 hover:text-teal-700 transition-colors">
-                    Mark all as read
-                  </button>
+                  <h5 className="m-0 text-base font-semibold text-gray-900 dark:text-white">Notifications {notifCount>0 && <span className="ml-2 text-xs font-normal text-gray-500">{notifCount} unread</span>}</h5>
+                  {notifCount>0 && <button onClick={markAllRead} className="text-sm font-medium text-[#0F9291] underline border-0 bg-transparent cursor-pointer p-0 hover:text-teal-700 transition-colors">Mark all as read</button>}
                 </div>
-                <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
+                <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
                   <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }`}</style>
-                  <div className="flex flex-col gap-2">
-                    <div className="text-center py-6 text-sm text-gray-400">No notifications</div>
-                  </div>
+                  {notifLoading ? (
+                    <div className="space-y-3">{[1,2,3].map(i=> <div key={i} className="h-16 bg-gray-50 dark:bg-white/5 rounded-xl animate-pulse"/> )}</div>
+                  ) : notifs.length===0 ? (
+                    <div className="text-center py-10">
+                      <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-3"><CheckCheck className="w-7 h-7 text-emerald-500"/></div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">You&apos;re all caught up</p>
+                      <p className="text-xs text-gray-500 mt-1">No new notifications.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {notifs.map((n:any)=> {
+                        const { Icon, bg, border } = notifIcon(n.type, n.severity);
+                        const isCrit = String(n.severity).toUpperCase()==='CRITICAL' || String(n.type).toUpperCase().includes('OUT_OF_STOCK') || String(n.type).toUpperCase()==='EXPIRED';
+                        return (
+                          <button key={String(n.id)} onClick={()=> handleNotifClick(n)} className={`flex gap-3 w-full text-left p-3 rounded-xl border transition-all ${n.read ? 'bg-white dark:bg-transparent border-transparent opacity-70' : 'bg-gray-50 dark:bg-white/[0.04] border-gray-100 dark:border-white/5 hover:border-[#0F9291]/20'} ${isCrit?'ring-1 ring-red-100':''}`}>
+                            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border" style={{ background: bg, borderColor: border }}><Icon className="w-4 h-4" style={{ color: isCrit?'#EF4444':'#0F9291'}}/></span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-semibold text-gray-900 dark:text-white truncate">{n.title}</span>
+                              <span className="block text-xs text-gray-500 truncate">{n.message}</span>
+                              <span className="block text-[11px] text-gray-400 mt-0.5">{timeAgo(n.createdAt)}</span>
+                            </span>
+                            {!n.read && <span className="w-2 h-2 rounded-full bg-[#0F9291] shrink-0 mt-2"/>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="pt-3">
-                  <button
-                    className="flex items-center justify-center w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#2a2a38] bg-white dark:bg-[#1a1a24] cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100 gap-2 hover:bg-gray-50 dark:hover:bg-[#222230] hover:shadow-sm transition-all duration-250 active:scale-[0.98]"
+                  <a href="/notifications"
+                    className="flex items-center justify-center w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#2a2a38] bg-white dark:bg-[#1a1a24] cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100 gap-2 hover:bg-gray-50 dark:hover:bg-[#222230] hover:shadow-sm transition-all duration-250 active:scale-[0.98] no-underline"
+                    onClick={()=> setShowNotifications(false)}
                   >
                     View All
                     <ChevronDown className="w-4 h-4 -rotate-90" />
-                  </button>
+                  </a>
                 </div>
               </div>
             )}

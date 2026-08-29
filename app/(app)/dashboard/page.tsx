@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/LucideIcon';
 import { ProductsAPI, CategoriesAPI, TransactionsAPI, InvoicesAPI, BatchesAPI } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useBranch } from '@/lib/branch-context';
 import { takeDashboardBootData, DATA_CHANGED_EVENT } from '@/lib/boot-cache';
 import { formatCurrency } from '@/lib/currency';
 import { getStockStatus, getStockLevel, DEFAULT_LOW_STOCK, type StockLevel } from '@/lib/stock-status';
@@ -102,7 +103,9 @@ const ALERT_PILL = [
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { isSuperAdmin, selectedBranchId, branches: branchList } = useBranch();
   const userName = user?.username || 'there';
+  const selectedBranch = branchList.find((b:any)=> String(b.id)===String(selectedBranchId));
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -147,11 +150,16 @@ export default function DashboardPage() {
     const refresh = () => { beginSilentScope(); Promise.resolve(loadDashboard()).finally(endSilentScope); };
     window.addEventListener('focus', refresh);
     window.addEventListener(DATA_CHANGED_EVENT, refresh);
+    window.addEventListener('ims:branch-changed', refresh);
     return () => {
       window.removeEventListener('focus', refresh);
       window.removeEventListener(DATA_CHANGED_EVENT, refresh);
+      window.removeEventListener('ims:branch-changed', refresh);
     };
   }, [loadDashboard]);
+
+  // Branch-aware: reload when superadmin switches branch via BranchSwitcher
+  useEffect(()=>{ if(isSuperAdmin) loadDashboard(); }, [selectedBranchId]);
 
   useEffect(() => {
     setGeneratedAt(new Date().toLocaleString('en-GB', {
@@ -250,8 +258,17 @@ export default function DashboardPage() {
       return d >= 0 && d <= 30 * 86400000;
     });
 
+    // End-to-end SuperAdmin stock valuation (qty * purchasePrice || price) + stock units
+    const totalStockValue = products.reduce((s, p:any) => {
+      const q = Number(p.stockQuantity ?? p.quantity ?? 0);
+      const unit = Number(p.purchasePrice ?? p.price ?? 0);
+      return s + q * unit;
+    }, 0);
+    const stockUnits = products.reduce((s, p:any)=> s + Number(p.stockQuantity ?? p.quantity ?? 0), 0);
+
     return {
       products, categories, tx, invoices, batches,
+      totalStockValue, stockUnits,
       // Business-date windows derived from the record's own timestamp.
       todaySales: (() => {
         const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -328,6 +345,8 @@ export default function DashboardPage() {
           <button onClick={() => loadDashboard()} className="ml-auto font-semibold underline">Retry</button>
         </div>
       )}
+
+
 
       {/* ===================== PAGE HEADER ===================== */}
       <div className="flex items-start justify-between flex-wrap gap-4 mb-5">

@@ -47,6 +47,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'D' },
       { name: 'Branches', href: '/branches', icon: Building2, roles: ['super_admin', 'admin', 'branch_manager', 'manager'] as Role[] },
+      { name: 'User Management', href: '/users', icon: Users, roles: ['super_admin', 'admin'] as Role[] },
     ],
   },
   {

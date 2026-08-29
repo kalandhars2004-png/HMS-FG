@@ -135,7 +135,7 @@ export default function BranchesHubPage() {
                     <p className="text-xs text-gray-500 flex items-center gap-2 mt-1"><Phone className="w-3 h-3"/> {b.phone || '-'} · <Mail className="w-3 h-3"/> {b.email || '-'}</p>
                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1"><UserCheck className="w-3 h-3"/> Manager: {b.managerName || <span className="text-gray-400">Unassigned</span>}</p>
                     <div className="flex gap-2 mt-4">
-                      <button onClick={()=> window.open(`/branches/${b.id}`, '_blank')} className="flex-1 h-9 inline-flex items-center justify-center gap-1.5 bg-[#0F9291] text-white rounded-lg text-sm hover:bg-[#0e7a79] font-medium"><Eye className="w-4 h-4"/> View Branch</button>
+                      <Link href={`/branches/${b.id}`} target="_blank" className="flex-1 h-9 inline-flex items-center justify-center gap-1.5 bg-[#0F9291] text-white rounded-lg text-sm hover:bg-[#0e7a79] font-medium"><Eye className="w-4 h-4"/> View Branch</Link>
                       <button onClick={()=> openEdit(b)} className="h-9 px-3 inline-flex items-center justify-center gap-1 bg-white border border-gray-200 rounded-lg text-sm hover:bg-gray-50" title="Edit"><Edit2 className="w-4 h-4"/></button>
                       <button onClick={()=>handleDisable(b)} className="h-9 px-3 inline-flex items-center justify-center gap-1 bg-white border border-amber-200 text-amber-700 rounded-lg text-sm hover:bg-amber-50" title="Disable"><Ban className="w-4 h-4"/></button>
                     </div>
