@@ -8,7 +8,9 @@ import {
   FileSpreadsheet, Printer, ArrowUpToLine, ArrowUpDown, Save, Loader2, Truck, Pill,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
-import { StockTransfersAPI, ProductsAPI, WarehousesAPI } from '@/lib/api';
+import { StockTransfersAPI, ProductsAPI, BranchesAPI } from '@/lib/api';
+import { useBranch } from '@/lib/branch-context';
+import { useAuth } from '@/lib/auth-context';
 
 /* ───────────── Types (real backend model) ───────────── */
 
@@ -28,7 +30,7 @@ interface TransferRow {
 }
 
 interface ProductOption { id: number; name: string; }
-interface WarehouseOption { id: number; name: string; }
+interface BranchOption { id: number; name: string; code?: string; }
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
 
@@ -64,18 +66,23 @@ const modalLabelCls = 'block text-sm font-semibold text-gray-700 dark:text-gray-
 
 /* ───────────── Create / Edit Transfer Modal ───────────── */
 
-function TransferFormModal({ mode, initial, saving, products, warehouses, onClose, onSave }: {
+function TransferFormModal({ mode, initial, saving, products, branches, onClose, onSave }: {
   mode: 'create' | 'edit';
   initial: TransferRow | null;
   saving: boolean;
   products: ProductOption[];
-  warehouses: WarehouseOption[];
+  branches: BranchOption[];
   onClose: () => void;
   onSave: (data: { productId: number; fromId: number; toId: number; qty: number; reason: string; status: string }) => void;
 }) {
+  const { isSuperAdmin, selectedBranchId, branches: allBranches } = useBranch();
+  const { user } = useAuth();
+  const userBranchId = user?.branchId ? Number(user.branchId) : 0;
+  const userBranchName = allBranches.find(b => String(b.id) === String(userBranchId))?.name || `Branch #${userBranchId}`;
+
   const [form, setForm] = useState({
     productId: initial?.productId ?? 0,
-    fromId: initial?.fromId ?? 0,
+    fromId: initial?.fromId ?? (isSuperAdmin ? 0 : userBranchId),
     toId: initial?.toId ?? 0,
     qty: initial ? String(initial.qty) : '',
     reason: initial?.reason || '',
@@ -98,13 +105,16 @@ function TransferFormModal({ mode, initial, saving, products, warehouses, onClos
     onSave({ productId: form.productId, fromId: form.fromId, toId: form.toId, qty, reason: form.reason, status: form.status });
   };
 
+  // To options exclude From
+  const toOptions = branches.filter(b => b.id !== form.fromId);
+
   return (
     <GlobalModal
       open
       size="lg"
       hideFooter
       title={mode === 'create' ? 'Create New Transfer' : 'Edit Stock Transfer'}
-      subtitle="Transfer stock between branches"
+      subtitle={isSuperAdmin ? 'Transfer stock between any branches' : `From: ${userBranchName} (locked) → To: any branch`}
       icon={<Truck className="w-4 h-4" />}
       iconTileClass="bg-gradient-to-br from-[#0F9291] to-teal-600"
       onClose={onClose}
@@ -119,20 +129,27 @@ function TransferFormModal({ mode, initial, saving, products, warehouses, onClos
           {errors.item && <p className="text-xs text-red-500 mt-1">{errors.item}</p>}
         </div>
         <div className="col-span-12 sm:col-span-6">
-          <label className={modalLabelCls}>From Branch <span className="text-red-500">*</span></label>
-          <select value={form.fromId} onChange={e => set('fromId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
-            <option value={0}>Select</option>
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
+          <label className={modalLabelCls}>From Branch <span className="text-red-500">*</span> {!isSuperAdmin && <span className="text-[11px] font-normal text-gray-400">(locked to your branch)</span>}</label>
+          {isSuperAdmin ? (
+            <select value={form.fromId} onChange={e => set('fromId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
+              <option value={0}>Select</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name} {b.code ? `(${b.code})` : ''}</option>)}
+            </select>
+          ) : (
+            <div className={`${modalInputCls} flex items-center bg-gray-50 dark:bg-[#232323] text-gray-700 dark:text-gray-300 cursor-not-allowed`}>
+              {userBranchName}
+            </div>
+          )}
           {errors.from && <p className="text-xs text-red-500 mt-1">{errors.from}</p>}
         </div>
         <div className="col-span-12 sm:col-span-6">
           <label className={modalLabelCls}>To Branch <span className="text-red-500">*</span></label>
           <select value={form.toId} onChange={e => set('toId', Number(e.target.value))} className={`${modalInputCls} appearance-none cursor-pointer`}>
             <option value={0}>Select</option>
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            {toOptions.map(b => <option key={b.id} value={b.id}>{b.name} {b.code ? `(${b.code})` : ''}</option>)}
           </select>
           {errors.to && <p className="text-xs text-red-500 mt-1">{errors.to}</p>}
+          {toOptions.length === 0 && <p className="text-xs text-amber-600 mt-1">No other branches available</p>}
         </div>
 
         <div className="col-span-12 sm:col-span-6">
@@ -315,7 +332,7 @@ const tdCls = 'px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300 whitespace-n
 export default function StockTransferPage() {
   const [rows, setRows] = useState<TransferRow[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -369,29 +386,29 @@ export default function StockTransferPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [trRes, prodRes, whRes] = await Promise.all([
+      const [trRes, prodRes, brRes] = await Promise.all([
         StockTransfersAPI.getAll().catch(() => ({ data: [] })),
         ProductsAPI.getAll().catch(() => ({ data: [] })),
-        WarehousesAPI.getAll().catch(() => ({ data: [] })),
+        BranchesAPI.getAll().catch(() => ({ data: [] })),
       ]);
       const prodList: ProductOption[] = (prodRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
-      const whList: WarehouseOption[] = (whRes.data || []).map((w: any) => ({ id: w.id, name: w.name }));
+      const brList: BranchOption[] = (brRes.data || []).map((b: any) => ({ id: b.id, name: b.name, code: b.code }));
       setProducts(prodList);
-      setWarehouses(whList);
+      setBranches(brList);
 
       const prodName = (id?: number) => prodList.find(p => p.id === id)?.name || `Product #${id ?? '?'}`;
-      const whName = (id?: number) => whList.find(w => w.id === id)?.name || `Warehouse #${id ?? '?'}`;
+      const brName = (id?: number) => brList.find(b => b.id === id)?.name || `Branch #${id ?? '?'}`;
       const mapped: TransferRow[] = (trRes.data || []).map((t: any) => ({
         id: t.id,
         productId: t.productId,
         item: t.productName || prodName(t.productId),
-        fromId: t.fromWarehouseId,
-        from: t.fromWarehouseName || whName(t.fromWarehouseId),
-        toId: t.toWarehouseId,
-        to: t.toWarehouseName || whName(t.toWarehouseId),
+        fromId: t.fromBranchId ?? t.fromWarehouseId,
+        from: t.fromBranchName || t.fromWarehouseName || brName(t.fromBranchId ?? t.fromWarehouseId),
+        toId: t.toBranchId ?? t.toWarehouseId,
+        to: t.toBranchName || t.toWarehouseName || brName(t.toBranchId ?? t.toWarehouseId),
         qty: t.quantity ?? 0,
         reason: t.description || '',
-        status: t.status || 'Active',
+        status: t.status || 'PENDING',
         datetime: formatDateTime(t.createdAt),
         ts: t.createdAt ? new Date(t.createdAt).getTime() : 0,
       }));
@@ -405,7 +422,7 @@ export default function StockTransferPage() {
   useEffect(() => { setPage(1); }, [searchQuery, datePreset, filterMedicines, filterTos, filterStatuses, pageSize]);
 
   const allMedicines = useMemo(() => products.map(p => p.name), [products]);
-  const allTos = useMemo(() => warehouses.map(w => w.name), [warehouses]);
+  const allTos = useMemo(() => branches.map(b => b.name), [branches]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -470,6 +487,8 @@ export default function StockTransferPage() {
     try {
       await StockTransfersAPI.create({
         productId: data.productId,
+        fromBranchId: data.fromId,
+        toBranchId: data.toId,
         fromWarehouseId: data.fromId,
         toWarehouseId: data.toId,
         quantity: data.qty,
@@ -478,8 +497,8 @@ export default function StockTransferPage() {
       });
       setShowCreate(false);
       await loadData();
-    } catch {
-      alert('Failed to create transfer');
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to create transfer');
     } finally {
       setSaving(false);
     }
@@ -491,6 +510,8 @@ export default function StockTransferPage() {
     try {
       await StockTransfersAPI.update(String(editingRow.id), {
         productId: data.productId,
+        fromBranchId: data.fromId,
+        toBranchId: data.toId,
         fromWarehouseId: data.fromId,
         toWarehouseId: data.toId,
         quantity: data.qty,
@@ -499,8 +520,8 @@ export default function StockTransferPage() {
       });
       setEditingRow(null);
       await loadData();
-    } catch {
-      alert('Failed to update transfer');
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to update transfer');
     } finally {
       setSaving(false);
     }
@@ -794,7 +815,7 @@ export default function StockTransferPage() {
           initial={editingRow}
           saving={saving}
           products={products}
-          warehouses={warehouses}
+          branches={branches}
           onClose={() => { setShowCreate(false); setEditingRow(null); }}
           onSave={editingRow ? handleEdit : handleCreate}
         />
