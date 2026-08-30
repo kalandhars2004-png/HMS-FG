@@ -11,6 +11,7 @@ import { useTheme } from '@/lib/theme-context';
 import { isAnyModalOpen } from '@/lib/modal-guard';
 import { AlertsAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { useBranch } from '@/lib/branch-context';
 
 function useOutsideClick(refs: React.RefObject<HTMLElement | null>[], handler: () => void) {
   useEffect(() => {
@@ -136,6 +137,7 @@ export default function Navbar() {
   const { dark, toggleTheme } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
+  const { isSuperAdmin, branches, selectedBranchId, selectedBranch, selectBranch } = useBranch();
   const [mounted, setMounted] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -200,6 +202,26 @@ export default function Navbar() {
           <h4 className="hidden lg:block m-0 text-base font-semibold text-gray-900 dark:text-white ml-1">
             {getPageTitle(pathname)}
           </h4>
+          {/* Current Branch indicator — SuperAdmin only, persists across navigation (§28) */}
+          {isSuperAdmin && branches.length > 0 && (
+            <div className="hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-gray-200 dark:border-gray-700">
+              <Building2 className="w-4 h-4 text-[#0F9291]" />
+              <span className="text-xs font-medium text-gray-500">Current Branch:</span>
+              <div className="relative">
+                <select
+                  value={selectedBranchId ?? ''}
+                  onChange={(e) => selectBranch(e.target.value || null)}
+                  className="h-8 pl-2 pr-7 bg-white dark:bg-[#1a1a24] border border-gray-200 dark:border-[#2a2a38] rounded-lg text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20 appearance-none cursor-pointer"
+                >
+                  <option value="">All Branches</option>
+                  {branches.filter(b => b.status === 'ACTIVE').map((b) => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT */}

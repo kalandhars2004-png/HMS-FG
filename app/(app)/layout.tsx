@@ -3,14 +3,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useBranch } from '@/lib/branch-context';
 import { NAV_SECTIONS, canSeeSection, canSeeItem } from '@/components/sidebar/nav';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
+import BranchSelectionModal from '@/components/branch/BranchSelectionModal';
 
 function routeMatches(href: string, pathname: string): boolean {
   const base = href.split('?')[0];
   if (base.startsWith('#')) return false;
   return pathname === base || pathname.startsWith(base + '/');
+}
+
+// Branch-exempt routes — no branch selection required for SUPERADMIN
+const BRANCH_EXEMPT_ROUTES = ['/dashboard', '/branches', '/settings/branches', '/users', '/people'];
+function isBranchExempt(pathname: string): boolean {
+  return BRANCH_EXEMPT_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
+}
+function isBranchDependentRoute(pathname: string): boolean {
+  return !isBranchExempt(pathname);
 }
 
 function isRouteDenied(pathname: string, role?: string): boolean {
@@ -31,11 +42,14 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { user, isLoading } = useAuth();
+  const { isSuperAdmin, selectedBranchId, isLoading: branchLoading } = useBranch();
   const router = useRouter();
   const pathname = usePathname();
   const [redirecting, setRedirecting] = useState(false);
 
   const denied = useMemo(() => isRouteDenied(pathname, user?.role), [pathname, user?.role]);
+  const needsBranch = useMemo(() => isSuperAdmin && isBranchDependentRoute(pathname), [isSuperAdmin, pathname]);
+  const missingBranch = needsBranch && !selectedBranchId && !branchLoading;
 
   useEffect(() => {
     if (isLoading) return;
@@ -76,8 +90,10 @@ export default function DashboardLayout({
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar />
         {/* 220ms fade + 6px rise on route change — deliberately almost unnoticeable. */}
-        <main className="flex-1 overflow-y-auto p-6 dark:text-gray-100 animate-route-in" key={pathname}>{children}</main>
+        <main className="flex-1 overflow-y-auto p-6 dark:text-gray-100 animate-route-in" key={`${pathname}-${selectedBranchId ?? 'all'}`}>{children}</main>
       </div>
+      {/* SUPERADMIN mandatory branch selection — covers all branch-dependent modules except Dashboard/Branches */}
+      <BranchSelectionModal open={!!missingBranch} />
     </div>
   );
 }
