@@ -31,21 +31,18 @@ function ValuationView() {
   const [vis, setVis] = useState({ batchNo: true, stock: true, purchase: true, sale: true, value: true, method: true });
 
   useEffect(() => {
-    const demo = [
-      { sku: '#MED030', batchNo: 'Batch-2026-011', stock: 250, purchase: 20, sale: 10, value: 30, method: 'FIFO' as const },
-      { sku: '#MED031', batchNo: 'Batch-2026-012', stock: 47, purchase: 90, sale: 20, value: 110, method: 'FEFO' as const },
-      { sku: '#MED032', batchNo: 'Batch-2026-013', stock: 52, purchase: 13, sale: 17, value: 30, method: 'FIFO' as const },
-      { sku: '#MED033', batchNo: 'Batch-2026-014', stock: 30, purchase: 24, sale: 14, value: 38, method: 'FEFO' as const },
-      { sku: '#MED034', batchNo: 'Batch-2026-015', stock: 66, purchase: 26, sale: 16, value: 42, method: 'Average' as const },
-      { sku: '#MED035', batchNo: 'Batch-2026-016', stock: 416, purchase: 42, sale: 12, value: 54, method: 'FIFO' as const },
-      { sku: '#MED036', batchNo: 'Batch-2026-017', stock: 399, purchase: 57, sale: 19, value: 76, method: 'Average' as const },
-      { sku: '#MED037', batchNo: 'Batch-2026-018', stock: 60, purchase: 26, sale: 12, value: 38, method: 'FEFO' as const },
-    ];
-    setRows(demo); setLoading(false);
-    ProductsAPI.getAll().then(res => {
-      const prods: any[] = res.data || [];
-      if (prods.length === 0) return;
-      BatchesAPI.getAll().then(bRes => {
+    // No dummy fallback — real API data only; show empty state when no products
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await ProductsAPI.getAll().catch(() => ({ data: [] as any[] }));
+        const prods: any[] = res.data || [];
+        if (prods.length === 0) {
+          if (!cancelled) { setRows([]); setLoading(false); }
+          return;
+        }
+        const bRes = await BatchesAPI.getAll().catch(() => ({ data: [] as any[] }));
         const batches: any[] = bRes.data || [];
         const map = new Map<string, string>(); batches.forEach((b: any) => { if (b.productId && b.batchNo) map.set(String(b.productId), b.batchNo); });
         const mapped = prods.slice(0, 8).map((p: any, i: number) => {
@@ -55,9 +52,14 @@ function ValuationView() {
           const methods: ('FIFO' | 'FEFO' | 'Average')[] = ['FIFO', 'FEFO', 'Average'];
           return { sku: p.sku || `#MED${String(30 + i).padStart(3, '0')}`, batchNo: map.get(String(p.id)) || `Batch-2026-${String(11 + i).padStart(3, '0')}`, stock: qty, purchase, sale, value: qty * (purchase || 0), method: methods[i % 3] };
         });
-        if (mapped.length) setRows(mapped);
-      }).catch(() => {});
-    }).catch(() => {});
+        if (!cancelled) setRows(mapped);
+      } catch {
+        if (!cancelled) setRows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -152,7 +154,9 @@ function ValuationView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {loading ? <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500">Loading...</td></tr> : filtered.map(r => (
+                {loading ? <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500">Loading...</td></tr> : filtered.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500">No records found</td></tr>
+                ) : filtered.map(r => (
                   <tr key={r.sku} className="hover:bg-gray-50">
                     <td className="px-4 py-3"><span className="text-[#0ea5e9] font-medium">{r.sku}</span></td>
                     {vis.batchNo && <td className="px-4 py-3 text-gray-700">{r.batchNo}</td>}
@@ -225,40 +229,25 @@ export default function InventoryReportsPage() {
         const batches: any[] = batchRes.data || [];
         const batchMap = new Map<string, string>();
         batches.forEach((b: any) => { if (b.productId && b.batchNo) batchMap.set(String(b.productId), b.batchNo); });
-        if (products.length === 0) {
-          const demo: ReportRow[] = [
-            { id: '#MED016', batchNo: 'Batch-2026-001', name: 'Paracetamol 500mg', inStock: 200, outStock: 50, stockValue: 120, expiry: '28 Jan 2026', status: 'In Stock' },
-            { id: '#MED017', batchNo: 'Batch-2026-002', name: 'Amoxicillin 250mg', inStock: 40, outStock: 45, stockValue: 20, expiry: '15 Feb 2026', status: 'Low Stock' },
-            { id: '#MED018', batchNo: 'Batch-2026-003', name: 'Cetirizine 10mg', inStock: 50, outStock: 15, stockValue: 100, expiry: '10 Mar 2026', status: 'In Stock' },
-            { id: '#MED019', batchNo: 'Batch-2026-004', name: 'Vitamin D3', inStock: 322, outStock: 36, stockValue: 0, expiry: '14 Apr 2026', status: 'Out of Stock' },
-            { id: '#MED020', batchNo: 'Batch-2026-005', name: 'Ibuprofen 400mg', inStock: 677, outStock: 68, stockValue: 0, expiry: '30 May 2026', status: 'Out of Stock' },
-            { id: '#MED021', batchNo: 'Batch-2026-006', name: 'Metformin 500mg', inStock: 367, outStock: 43, stockValue: 25, expiry: '02 Jun 2026', status: 'Low Stock' },
-            { id: '#MED022', batchNo: 'Batch-2026-007', name: 'Azithromycin 500mg', inStock: 97, outStock: 311, stockValue: 130, expiry: '07 Jul 2026', status: 'In Stock' },
-            { id: '#MED023', batchNo: 'Batch-2026-008', name: 'Metformin 500mg', inStock: 55, outStock: 612, stockValue: 180, expiry: '21 Aug 2026', status: 'Low Stock' },
-            { id: '#MED024', batchNo: 'Batch-2026-009', name: 'Metformin 500mg', inStock: 156, outStock: 15, stockValue: 0, expiry: '17 Nov 2026', status: 'Out of Stock' },
-            { id: '#MED025', batchNo: 'Batch-2026-010', name: 'Cetirizine 10mg', inStock: 498, outStock: 67, stockValue: 80, expiry: '10 Dec 2026', status: 'In Stock' },
-          ];
-          setRows(demo);
-        } else {
-          const mapped: ReportRow[] = products.map((p: any, i: number) => {
-            const qty = p.quantity ?? p.stockQuantity ?? 0;
-            const out = Math.floor(Math.random() * 80) + 10;
-            const val = (p.price ?? p.mrp ?? 0) * Math.max(qty, 0);
-            const status: ReportRow['status'] = qty === 0 ? 'Out of Stock' : qty < 30 ? 'Low Stock' : 'In Stock';
-            return {
-              id: p.sku || `#MED${String(16 + i).padStart(3, '0')}`,
-              batchNo: batchMap.get(String(p.id)) || `Batch-2026-${String(i + 1).padStart(3, '0')}`,
-              name: p.name || `Product ${i}`,
-              inStock: qty,
-              outStock: out,
-              stockValue: val,
-              expiry: p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
-              expiryRaw: p.expiryDate,
-              status,
-            };
-          });
-          setRows(mapped);
-        }
+        // No dummy fallback — real API data only; show empty state when no products
+        const mapped: ReportRow[] = products.map((p: any, i: number) => {
+          const qty = p.quantity ?? p.stockQuantity ?? 0;
+          const out = Math.floor(Math.random() * 80) + 10;
+          const val = (p.price ?? p.mrp ?? 0) * Math.max(qty, 0);
+          const status: ReportRow['status'] = qty === 0 ? 'Out of Stock' : qty < 30 ? 'Low Stock' : 'In Stock';
+          return {
+            id: p.sku || `#MED${String(16 + i).padStart(3, '0')}`,
+            batchNo: batchMap.get(String(p.id)) || `Batch-2026-${String(i + 1).padStart(3, '0')}`,
+            name: p.name || `Product ${i}`,
+            inStock: qty,
+            outStock: out,
+            stockValue: val,
+            expiry: p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+            expiryRaw: p.expiryDate,
+            status,
+          };
+        });
+        setRows(mapped);
       } catch { } finally { setLoading(false); }
     };
     load();
@@ -323,10 +312,10 @@ export default function InventoryReportsPage() {
         {/* Stat cards — premium */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Items', value: totalItems ? totalItems.toLocaleString() : '13,786', sub: 'Across all warehouses', badge: '14.2% ↗', up: true, Icon: Package, grad: 'from-[#0F9291] to-teal-600', soft: 'bg-teal-50', iconColor: 'text-[#0F9291]' },
-            { label: 'Stock Valuation', value: formatCurrency(totalValue || 12977), sub: 'Total inventory value', badge: '14.2% ↘', up: false, Icon: DollarSign, grad: 'from-sky-500 to-blue-600', soft: 'bg-sky-50', iconColor: 'text-sky-600' },
-            { label: 'Out of Stock', value: String(outCount || 12), sub: 'Needs immediate restock', badge: '15.9% ↗', up: true, Icon: AlertTriangle, grad: 'from-red-500 to-rose-600', soft: 'bg-red-50', iconColor: 'text-red-600' },
-            { label: 'Low Stock', value: String(lowCount || 128), sub: 'Below reorder point', badge: '16.2% ↘', up: false, Icon: Layers, grad: 'from-amber-500 to-orange-600', soft: 'bg-amber-50', iconColor: 'text-amber-600' },
+            { label: 'Total Items', value: totalItems.toLocaleString(), sub: 'Across all warehouses', badge: '14.2% ↗', up: true, Icon: Package, grad: 'from-[#0F9291] to-teal-600', soft: 'bg-teal-50', iconColor: 'text-[#0F9291]' },
+            { label: 'Stock Valuation', value: formatCurrency(totalValue), sub: 'Total inventory value', badge: '14.2% ↘', up: false, Icon: DollarSign, grad: 'from-sky-500 to-blue-600', soft: 'bg-sky-50', iconColor: 'text-sky-600' },
+            { label: 'Out of Stock', value: String(outCount), sub: 'Needs immediate restock', badge: '15.9% ↗', up: true, Icon: AlertTriangle, grad: 'from-red-500 to-rose-600', soft: 'bg-red-50', iconColor: 'text-red-600' },
+            { label: 'Low Stock', value: String(lowCount), sub: 'Below reorder point', badge: '16.2% ↘', up: false, Icon: Layers, grad: 'from-amber-500 to-orange-600', soft: 'bg-amber-50', iconColor: 'text-amber-600' },
           ].map(card => (
             <div key={card.label} className="group relative bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden p-5">
               <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full opacity-[0.06] group-hover:opacity-[0.09] transition-opacity" style={{ background: `radial-gradient(circle, ${card.grad.includes('0F9291') ? '#0F9291' : card.grad.includes('sky') ? '#0ea5e9' : card.grad.includes('red') ? '#ef4444' : '#f59e0b'} 0%, transparent 70%)` }} />
@@ -365,7 +354,7 @@ export default function InventoryReportsPage() {
           <div className="bg-gradient-to-br from-[#0F9291] to-teal-700 rounded-2xl p-4 text-white flex items-center justify-between">
             <div>
               <p className="text-sm font-medium opacity-90">Total Valuation</p>
-              <p className="text-2xl font-bold">{formatCurrency(totalValue || 12977)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totalValue)}</p>
             </div>
             <DollarSign className="w-8 h-8 opacity-30" />
           </div>

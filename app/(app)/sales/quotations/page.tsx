@@ -7,12 +7,7 @@ import GlobalModal from '@/components/ui/GlobalModal';
 export default function QuotationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
-
-  const quotations = [
-    { id: 'QT001', customer: { name: 'Carl Evans', initials: 'CE' }, date: '06 Dec 2025', reference: 'admin', grandTotal: 1000, status: 'Sent' },
-    { id: 'QT002', customer: { name: 'Minerva Rameriz', initials: 'MR' }, date: '05 Dec 2025', reference: 'admin', grandTotal: 1500, status: 'Pending' },
-    { id: 'QT003', customer: { name: 'Robert Lamon', initials: 'RL' }, date: '04 Dec 2025', reference: 'admin', grandTotal: 2000, status: 'Sent' },
-  ];
+  const [quotations] = useState<Array<{ id: string; customer: { name: string; initials: string }; date: string; reference: string; grandTotal: number; status: string }>>([]);
 
   const getAvatarColor = (index: number) => ['bg-blue-500', 'bg-pink-500', 'bg-indigo-500'][index % 3];
   const getStatusBg = (status: string) => status === 'Sent' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800';
@@ -57,7 +52,9 @@ export default function QuotationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {quotations.map((quote, index) => (
+              {quotations.length === 0 ? (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-400">No quotations — quotations are not yet available in the API. Dummy data removed.</td></tr>
+              ) : quotations.filter(q => !searchQuery || q.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) || q.id.toLowerCase().includes(searchQuery.toLowerCase())).map((quote, index) => (
                 <tr key={quote.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4"><span className="text-sm font-medium">{quote.id}</span></td>
                   <td className="px-6 py-4">

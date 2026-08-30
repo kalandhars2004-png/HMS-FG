@@ -8,7 +8,7 @@ import {
   DollarSign, BadgePercent, BarChart3, ShoppingBag, GripVertical,
   SlidersHorizontal, X, Calendar, ChevronDown, ArrowUpRight, TrendingUp, TrendingDown,
 } from '@/components/ui/LucideIcon';
-import { TransactionsAPI, InvoicesAPI } from '@/lib/api';
+import { TransactionsAPI, InvoicesAPI, BranchesAPI } from '@/lib/api';
 import { formatCurrency } from '@/lib/currency';
 import { toCSV, toXLSX, downloadBlob, printReport } from '@/lib/export';
 import {
@@ -45,16 +45,8 @@ type ProfitRow = {
   raw: any;
 };
 
-const BRANCHES = [
-  'Downtown Branch',
-  'Central Branch',
-  'West Loop Branch',
-  'Medical Center Branch',
-  'Midtown Branch',
-  'Uptown Branch',
-  'Buckhead Branch',
-  'Capitol Hill Branch',
-];
+// No dummy branch fallback — real branches fetched via BranchesAPI (see load)
+const BRANCHES: string[] = [];
 
 const SHAPE_01 = 'https://dreamspos.dreamstechnologies.com/pharmacy-pos/html/assets/img/bg/shape-01.png';
 const SHAPE_02 = 'https://dreamspos.dreamstechnologies.com/pharmacy-pos/html/assets/img/bg/shape-02.png';
@@ -62,6 +54,7 @@ const SHAPE_03 = 'https://dreamspos.dreamstechnologies.com/pharmacy-pos/html/ass
 const SHAPE_04 = 'https://dreamspos.dreamstechnologies.com/pharmacy-pos/html/assets/img/bg/shape-04.png';
 
 function pickBranch(id: string | number): string {
+  if (BRANCHES.length === 0) return '—';
   const n = typeof id === 'number' ? id : parseInt(String(id).replace(/\D/g, ''), 10) || 0;
   return BRANCHES[Math.abs(n) % BRANCHES.length];
 }
@@ -84,32 +77,9 @@ function fmtDate(d: string | Date | null): string {
 
 function fmtPct(n: number): string { return `${Math.round(n)}%`; }
 
-// Demo fallback identical to template
-const DEMO_ROWS: SalesRow[] = [
-  { id: '55', invoiceNo: '#INV055', date: '28 Jan 2026', dateObj: new Date('2026-01-28'), branch: 'Downtown Branch', customerName: 'Jane Cooper', salesAmount: 120, taxPct: 18, taxAmount: 21.6, netRevenue: 1200, status: 'Paid', raw: null },
-  { id: '56', invoiceNo: '#INV056', date: '15 Feb 2026', dateObj: new Date('2026-02-15'), branch: 'Central Branch', customerName: 'Wade Warren', salesAmount: 20, taxPct: 24, taxAmount: 4.8, netRevenue: 2143, status: 'Pending', raw: null },
-  { id: '57', invoiceNo: '#INV057', date: '10 Mar 2026', dateObj: new Date('2026-03-10'), branch: 'West Loop Branch', customerName: 'Cameron Williamson', salesAmount: 100, taxPct: 18, taxAmount: 18, netRevenue: 1300, status: 'Paid', raw: null },
-  { id: '58', invoiceNo: '#INV058', date: '14 Apr 2026', dateObj: new Date('2026-04-14'), branch: 'Medical Center Branch', customerName: 'Brooklyn Simmons', salesAmount: 35, taxPct: 24, taxAmount: 8.4, netRevenue: 3795, status: 'Pending', raw: null },
-  { id: '59', invoiceNo: '#INV059', date: '30 May 2026', dateObj: new Date('2026-05-30'), branch: 'Midtown Branch', customerName: 'Leslie Alexander', salesAmount: 120, taxPct: 16, taxAmount: 19.2, netRevenue: 12040, status: 'Pending', raw: null },
-  { id: '60', invoiceNo: '#INV060', date: '02 Jun 2026', dateObj: new Date('2026-06-02'), branch: 'Uptown Branch', customerName: 'Robert Fox', salesAmount: 25, taxPct: 24, taxAmount: 6, netRevenue: 2235, status: 'Pending', raw: null },
-  { id: '61', invoiceNo: '#INV061', date: '07 Jul 2026', dateObj: new Date('2026-07-07'), branch: 'Downtown Branch', customerName: 'Micheal John', salesAmount: 130, taxPct: 18, taxAmount: 23.4, netRevenue: 15330, status: 'Paid', raw: null },
-  { id: '62', invoiceNo: '#INV062', date: '21 Aug 2026', dateObj: new Date('2026-08-21'), branch: 'Buckhead Branch', customerName: 'Darlene Robertson', salesAmount: 180, taxPct: 16, taxAmount: 28.8, netRevenue: 18340, status: 'Pending', raw: null },
-  { id: '63', invoiceNo: '#INV063', date: '17 Nov 2026', dateObj: new Date('2026-11-17'), branch: 'Capitol Hill Branch', customerName: 'Dianne Russell', salesAmount: 60, taxPct: 16, taxAmount: 9.6, netRevenue: 86460, status: 'Paid', raw: null },
-  { id: '64', invoiceNo: '#INV064', date: '10 Dec 2026', dateObj: new Date('2026-12-10'), branch: 'Central Branch', customerName: 'Devon Lane', salesAmount: 80, taxPct: 16, taxAmount: 12.8, netRevenue: 87650, status: 'Paid', raw: null },
-];
-
-const DEMO_PL_ROWS: ProfitRow[] = [
-  { id: '#PLR070', date: '28 Jan 2026', dateObj: new Date('2026-01-28'), branch: 'Downtown Branch', totalSales: 120, purchaseCost: 20, grossProfit: 100, taxPct: 18, taxAmount: 18, netProfit: 1200, raw: null },
-  { id: '#PLR071', date: '15 Feb 2026', dateObj: new Date('2026-02-15'), branch: 'Central Branch', totalSales: 20, purchaseCost: 90, grossProfit: 90, taxPct: 24, taxAmount: 21.6, netProfit: 2143, raw: null },
-  { id: '#PLR072', date: '10 Mar 2026', dateObj: new Date('2026-03-10'), branch: 'West Loop Branch', totalSales: 100, purchaseCost: 13, grossProfit: 87, taxPct: 18, taxAmount: 15.6, netProfit: 1300, raw: null },
-  { id: '#PLR073', date: '14 Apr 2026', dateObj: new Date('2026-04-14'), branch: 'Medical Center Branch', totalSales: 345, purchaseCost: 24, grossProfit: 321, taxPct: 24, taxAmount: 77, netProfit: 3795, raw: null },
-  { id: '#PLR074', date: '30 May 2026', dateObj: new Date('2026-05-30'), branch: 'Midtown Branch', totalSales: 778, purchaseCost: 26, grossProfit: 752, taxPct: 16, taxAmount: 120, netProfit: 12040, raw: null },
-  { id: '#PLR075', date: '02 Jun 2026', dateObj: new Date('2026-06-02'), branch: 'Uptown Branch', totalSales: 25, purchaseCost: 42, grossProfit: -17, taxPct: 24, taxAmount: 6, netProfit: 2235, raw: null },
-  { id: '#PLR076', date: '07 Jul 2026', dateObj: new Date('2026-07-07'), branch: 'Downtown Branch', totalSales: 130, purchaseCost: 57, grossProfit: 73, taxPct: 18, taxAmount: 13, netProfit: 15330, raw: null },
-  { id: '#PLR077', date: '21 Aug 2026', dateObj: new Date('2026-08-21'), branch: 'Buckhead Branch', totalSales: 180, purchaseCost: 26, grossProfit: 154, taxPct: 16, taxAmount: 24, netProfit: 18340, raw: null },
-  { id: '#PLR078', date: '17 Nov 2026', dateObj: new Date('2026-11-17'), branch: 'Capitol Hill Branch', totalSales: 945, purchaseCost: 19, grossProfit: 926, taxPct: 16, taxAmount: 148, netProfit: 86460, raw: null },
-  { id: '#PLR079', date: '10 Dec 2026', dateObj: new Date('2026-12-10'), branch: 'Central Branch', totalSales: 80, purchaseCost: 72, grossProfit: 8, taxPct: 18, taxAmount: 1.4, netProfit: 87650, raw: null },
-];
+// No dummy fallback — real API data only; show empty state when no transactions/invoices
+const DEMO_ROWS: SalesRow[] = [];
+const DEMO_PL_ROWS: ProfitRow[] = [];
 
 function SalesReportsInner() {
   const searchParams = useSearchParams();
@@ -158,10 +128,17 @@ function SalesReportsInner() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [invRes, trxRes] = await Promise.all([
+      const [invRes, trxRes, branchRes] = await Promise.all([
         InvoicesAPI.getAll().catch(() => ({ data: [] as any[] })),
         TransactionsAPI.getAll().catch(() => ({ data: [] as any[] })),
+        BranchesAPI.getAll().catch(() => ({ data: [] as any[] })),
       ]);
+      // Real branches from API — no dummy fallback
+      const branchList: any[] = branchRes.data || [];
+      const branchNamesFetched = branchList.map((b: any) => b.name || b.branchName || String(b.id)).filter(Boolean);
+      if (branchNamesFetched.length) {
+        BRANCHES.splice(0, BRANCHES.length, ...branchNamesFetched);
+      }
       const invoices: any[] = invRes.data || [];
       const transactions: any[] = trxRes.data || [];
 
@@ -174,7 +151,7 @@ function SalesReportsInner() {
           const rawDate = inv.invoiceDate || inv.createdAt || inv.dueDate;
           const dateObj = rawDate ? new Date(rawDate) : null;
           const date = fmtDate(rawDate);
-          const branch = inv.branch || pickBranch(id);
+          const branch = inv.branch || inv.branchName || pickBranch(id);
           const customerName = inv.customerName || inv.customerEmail || 'Walk-in Customer';
           const salesAmount = Number(inv.subtotal ?? inv.totalAmount ?? inv.amount ?? 0);
           const taxAmount = Number(inv.taxAmount ?? 0);
@@ -196,7 +173,7 @@ function SalesReportsInner() {
           const rawDate = t.createdAt || t.updatedAt;
           const dateObj = rawDate ? new Date(rawDate) : null;
           const date = fmtDate(rawDate);
-          const branch = pickBranch(id);
+          const branch = (t as any).branch || (t as any).branchName || pickBranch(id);
           const customerName = t.description || t.customerName || 'Walk-in Customer';
           const salesAmount = Number(t.totalPrice ?? t.amount ?? 0);
           const taxPct = 18;
@@ -207,10 +184,7 @@ function SalesReportsInner() {
         });
       }
 
-      if (mapped.length === 0) {
-        mapped = DEMO_ROWS;
-      }
-
+      // No dummy fallback — real API data only; show empty state when no rows
       if (mapped.length) {
         const vals = mapped.map(r => r.netRevenue);
         const min = Math.min(...vals);
@@ -222,7 +196,8 @@ function SalesReportsInner() {
 
       setRows(mapped);
     } catch {
-      setRows(DEMO_ROWS);
+      // No dummy fallback — show empty
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -298,9 +273,9 @@ function SalesReportsInner() {
     };
   }, [rows, filtered]);
 
-  // ── Profit-Loss derived rows (from same sales rows, deterministic purchase cost)
+  // ── Profit-Loss derived rows (from same sales rows) — no dummy fallback
   const profitRows: ProfitRow[] = useMemo(() => {
-    if (rows.length === 0) return DEMO_PL_ROWS;
+    if (rows.length === 0) return [];
     // derive deterministic purchase cost so PL looks stable across reloads
     return rows.map((r, idx) => {
       const purchaseCost = Math.max(12, Math.round(r.salesAmount * (0.18 + (parseInt(r.id) % 7) * 0.04)));
@@ -385,11 +360,7 @@ function SalesReportsInner() {
       agg[mi].expense += r.purchaseCost;
       agg[mi].net += r.netProfit;
     });
-    // smooth if empty — fallback to demo-ish curve
-    const hasData = agg.some(a=>a.revenue>0);
-    if (!hasData) {
-      return months.map((m,i) => ({ month: m, revenue: 400 + i*120 + Math.sin(i)*80, expense: 200 + i*60, net: 600 + i*180 }));
-    }
+    // No dummy fallback — return zeros when empty; chart will show "No data"
     return agg;
   }, [plFiltered]);
 

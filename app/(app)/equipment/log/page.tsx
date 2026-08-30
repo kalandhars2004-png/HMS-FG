@@ -59,7 +59,7 @@ const cardCls = 'bg-white dark:bg-[#161B22] rounded-[0.85rem] border border-gray
 const dropdownBtnCls = 'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#161B22] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1F2937] transition-all duration-250';
 
 export default function InventoryLogsPage() {
-  const [rows, setRows] = useState<InventoryLogEntry[]>(TEMPLATE_ROWS);
+  const [rows, setRows] = useState<InventoryLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [openDropdown, setOpenDropdown] = useState<'columns' | 'sort' | 'export' | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(COLUMN_DEFS));

@@ -8,13 +8,7 @@ import { formatCurrency } from '@/lib/currency';
 export default function PrescriptionsPage() {
   const [tab, setTab] = useState('pending');
 
-  const prescriptions = [
-    { id: 'RX-001', patient: 'Alice Cooper', doctor: 'Dr. Michael Anderson', medicines: 3, total: 45.50, status: 'Pending', date: '27 Jul 2026' },
-    { id: 'RX-002', patient: 'Bob Marley', doctor: 'Dr. Emily Thompson', medicines: 2, total: 28.00, status: 'Approved', date: '27 Jul 2026' },
-    { id: 'RX-003', patient: 'Charlie Brown', doctor: 'Dr. David Wilson', medicines: 5, total: 112.75, status: 'Completed', date: '26 Jul 2026' },
-    { id: 'RX-004', patient: 'Diana Prince', doctor: 'Dr. Sophia Martinez', medicines: 1, total: 15.99, status: 'Cancelled', date: '25 Jul 2026' },
-    { id: 'RX-005', patient: 'Eve Adams', doctor: 'Dr. James Carter', medicines: 4, total: 67.25, status: 'Pending', date: '25 Jul 2026' },
-  ];
+  const prescriptions: Array<{ id: string; patient: string; doctor: string; medicines: number; total: number; status: string; date: string }> = [];
 
   const filtered = prescriptions.filter(p => p.status.toLowerCase() === tab || tab === 'all');
 
@@ -61,7 +55,9 @@ export default function PrescriptionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((rx, i) => (
+              {filtered.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">No prescriptions — prescriptions are not yet available in the API. Dummy data removed.</td></tr>
+              ) : filtered.map((rx, i) => (
                 <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-blue-600">{rx.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{rx.patient}</td>

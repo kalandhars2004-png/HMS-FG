@@ -33,18 +33,8 @@ function deterministicBalanceRatio(id: string): number {
   return 0.25 + ((Math.abs(n * 37) % 50) / 100); // 0.25..0.74
 }
 
-const PR_DEMO: PRRow[] = [
-  { id: '#PRS016', vendorName: 'MedLife Distributors', invoiceNo: 'INV001', date: '28 Jan 2026', dateObj: new Date('2026-01-28'), amount: 120, balance: null, status: 'Refunded', raw: null },
-  { id: '#PRS016', vendorName: 'HealthCare Pharma', invoiceNo: 'INV002', date: '15 Feb 2026', dateObj: new Date('2026-02-15'), amount: 20, balance: 20, status: 'Pending', raw: null },
-  { id: '#PRS016', vendorName: 'GreenCross Medicals', invoiceNo: 'INV003', date: '10 Mar 2026', dateObj: new Date('2026-03-10'), amount: 100, balance: null, status: 'Refunded', raw: null },
-  { id: '#PRS016', vendorName: 'NovaCure Pharma', invoiceNo: 'INV004', date: '14 Apr 2026', dateObj: new Date('2026-04-14'), amount: 35, balance: 15, status: 'Partially Paid', raw: null },
-  { id: '#PRS016', vendorName: 'CareWell Agency', invoiceNo: 'INV005', date: '30 May 2026', dateObj: new Date('2026-05-30'), amount: 120, balance: 20, status: 'Partially Paid', raw: null },
-  { id: '#PRS016', vendorName: 'Zenith Distributors', invoiceNo: 'INV006', date: '02 Jun 2026', dateObj: new Date('2026-06-02'), amount: 25, balance: 25, status: 'Pending', raw: null },
-  { id: '#PRS016', vendorName: 'LifeLine Pharma', invoiceNo: 'INV007', date: '07 Jul 2026', dateObj: new Date('2026-07-07'), amount: 130, balance: null, status: 'Refunded', raw: null },
-  { id: '#PRS016', vendorName: 'SafeMeds Distribution', invoiceNo: 'INV008', date: '21 Aug 2026', dateObj: new Date('2026-08-21'), amount: 180, balance: 180, status: 'Pending', raw: null },
-  { id: '#PRS016', vendorName: 'NovaHealth Pharma', invoiceNo: 'INV009', date: '17 Nov 2026', dateObj: new Date('2026-11-17'), amount: 60, balance: 30, status: 'Partially Paid', raw: null },
-  { id: '#PRS016', vendorName: 'PrimeCare Pharma', invoiceNo: 'INV010', date: '10 Dec 2026', dateObj: new Date('2026-12-10'), amount: 80, balance: null, status: 'Refunded', raw: null },
-];
+// No dummy fallback — real API data only; empty when no purchase returns
+const PR_DEMO: PRRow[] = [];
 
 export default function PurchaseReturnsPage() {
   const [rows, setRows] = useState<PRRow[]>([]);
@@ -145,7 +135,7 @@ export default function PurchaseReturnsPage() {
         });
       }
 
-      if (mapped.length === 0) mapped = PR_DEMO;
+      // No dummy fallback — real API data only; keep mapped as [] when empty
 
       if (mapped.length) {
         const vals = mapped.map(r => r.amount);
@@ -160,7 +150,8 @@ export default function PurchaseReturnsPage() {
 
       setRows(mapped);
     } catch {
-      setRows(PR_DEMO);
+      // No dummy fallback — show empty
+      setRows([]);
     } finally { setLoading(false); }
   }, []);
 

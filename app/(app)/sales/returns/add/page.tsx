@@ -1,26 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { House, ChevronLeft, Search, Calendar, Plus, Trash2, GripVertical, Printer, Download, X } from '@/components/ui/LucideIcon';
+import { CustomersAPI, InvoicesAPI, ProductsAPI, PurchaseReturnsAPI } from '@/lib/api';
+import { useBranch } from '@/lib/branch-context';
 
-interface ItemRow { id: number; product: string; qty: string; unit: string; rate: string; tax: string; discount: string; total: string; }
+interface ItemRow { id: number; product: string; productId?: number; qty: string; unit: string; rate: string; tax: string; discount: string; total: string; }
 
-const CUSTOMERS = ['Select', 'Andrew George', 'John Doe', 'Jane Smith', 'Robert Johnson'];
-const INVOICES = ['Select', '#INV016', '#INV017', '#INV018', '#INV019'];
 const CURRENCIES = ['INR'];
 const TAXES = ['18%', '5%', '12%', '28%'];
-const PRODUCTS = ['Select', 'Paracetamol', 'Amoxicillin', 'Cetirizine', 'Ceftriaxone', 'Ondansetron'];
 
 export default function AddSalesReturnPage() {
-  const [customer, setCustomer] = useState('Select');
-  const [invoice, setInvoice] = useState('Select');
+  const { selectedBranchId } = useBranch();
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [invoices, setInvoices] = useState<{ id: string; label: string }[]>([]);
+  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [customer, setCustomer] = useState('');
+  const [invoice, setInvoice] = useState('');
   const [date, setDate] = useState('');
   const [currency, setCurrency] = useState('INR');
   const [taxSel, setTaxSel] = useState('18%');
   const [discountPct, setDiscountPct] = useState('');
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    CustomersAPI.getAll().then(r => setCustomers((r.data || []).map((c: any) => ({ id: String(c.id), name: c.name || c.customerName || `Customer #${c.id}` })))).catch(() => {});
+    InvoicesAPI.getAll().then(r => setInvoices((r.data || []).map((inv: any) => ({ id: String(inv.id), label: inv.invoiceNumber || `#INV${inv.id}` })))).catch(() => {});
+    ProductsAPI.getAll().then(r => setProducts((r.data || []).map((p: any) => ({ id: String(p.id), name: p.name })))).catch(() => {});
+  }, [selectedBranchId]);
   const [items, setItems] = useState<ItemRow[]>([
     { id: 1, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
     { id: 2, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
@@ -53,14 +63,28 @@ export default function AddSalesReturnPage() {
   const grand = subTotal + taxAmt - discAmt;
 
   const reset = () => {
-    setCustomer('Select'); setInvoice('Select'); setDate(''); setCurrency('INR'); setTaxSel('18%'); setDiscountPct(''); setNotes(''); setTerms('');
+    setCustomer(''); setInvoice(''); setDate(''); setCurrency('INR'); setTaxSel('18%'); setDiscountPct(''); setNotes(''); setTerms('');
     setItems([
       { id: 1, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
-      { id: 2, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
-      { id: 3, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
-      { id: 4, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
-      { id: 5, product: 'Select', qty: '', unit: '', rate: '', tax: '', discount: '', total: '' },
     ]);
+  };
+
+  const handleCreate = async () => {
+    if (!customer) { alert('Please select a customer'); return; }
+    if (!invoice) { alert('Please select an invoice'); return; }
+    const validItems = items.filter(r => r.product !== 'Select' && r.qty);
+    if (validItems.length === 0) { alert('Add at least one product with quantity'); return; }
+    setSaving(true);
+    try {
+      await PurchaseReturnsAPI.create({
+        customerId: customer,
+        invoiceId: invoice,
+        date, currency, tax: taxSel, discount: discountPct, notes, terms,
+        items: validItems.map(r => ({ product: r.product, qty: Number(r.qty), unit: r.unit, rate: Number(r.rate), tax: r.tax, discount: r.discount })),
+      } as unknown);
+      alert('Sales Return Created');
+      reset();
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed to create sales return'); } finally { setSaving(false); }
   };
 
   return (
@@ -92,13 +116,15 @@ export default function AddSalesReturnPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Customer Name <span className="text-red-500">*</span></label>
                 <select value={customer} onChange={e => setCustomer(e.target.value)} className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20">
-                  {CUSTOMERS.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="">Select</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Invoice <span className="text-red-500">*</span></label>
                 <select value={invoice} onChange={e => setInvoice(e.target.value)} className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20">
-                  {INVOICES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="">Select</option>
+                  {invoices.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
               </div>
               <div>
@@ -153,7 +179,8 @@ export default function AddSalesReturnPage() {
                           </button>
                           <GripVertical className="w-4 h-4 text-gray-400 shrink-0" />
                           <select value={row.product} onChange={e => updRow(row.id, 'product', e.target.value)} className="flex-1 min-w-[140px] h-8 px-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#0F9291]">
-                            {PRODUCTS.map(p => <option key={p} value={p}>{p}</option>)}
+                            <option value="Select">Select</option>
+                            {products.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                           </select>
                         </div>
                       </td>
@@ -185,8 +212,8 @@ export default function AddSalesReturnPage() {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button onClick={reset} className="px-5 py-2.5 bg-[#f8f9fa] border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100">Reset</button>
               <div className="flex items-center gap-2">
-                <button onClick={() => alert('Saved & Sent')} className="px-5 py-2.5 bg-white border border-[#0F9291] text-[#0F9291] rounded-lg text-sm font-medium hover:bg-[#0F9291]/5">Save & Send</button>
-                <button onClick={() => alert('Sales Return Created')} className="px-5 py-2.5 bg-[#0F9291] hover:bg-[#0e7a79] text-white rounded-lg text-sm font-medium shadow-sm">Create New</button>
+                <button onClick={handleCreate} disabled={saving} className="px-5 py-2.5 bg-white border border-[#0F9291] text-[#0F9291] rounded-lg text-sm font-medium hover:bg-[#0F9291]/5 disabled:opacity-50">Save & Send</button>
+                <button onClick={handleCreate} disabled={saving} className="px-5 py-2.5 bg-[#0F9291] hover:bg-[#0e7a79] text-white rounded-lg text-sm font-medium shadow-sm disabled:opacity-50">{saving ? 'Saving...' : 'Create New'}</button>
               </div>
             </div>
           </div>
@@ -253,13 +280,7 @@ export default function AddSalesReturnPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
                       {items.filter(r => r.product !== 'Select' && r.qty).length === 0 ? (
-                        <>
-                          <tr><td className="px-3 py-2.5">1</td><td className="px-3 py-2.5 font-medium text-gray-900">Paracetamol 500</td><td className="px-3 py-2.5">3</td><td className="px-3 py-2.5">300</td><td className="px-3 py-2.5">200</td><td className="px-3 py-2.5">18%</td><td className="px-3 py-2.5 text-right font-semibold">₹200</td></tr>
-                          <tr><td className="px-3 py-2.5">2</td><td className="px-3 py-2.5 font-medium text-gray-900">Amoxicillin 250</td><td className="px-3 py-2.5">4</td><td className="px-3 py-2.5">5000</td><td className="px-3 py-2.5">3000</td><td className="px-3 py-2.5">16%</td><td className="px-3 py-2.5 text-right font-semibold">₹600</td></tr>
-                          <tr><td className="px-3 py-2.5">3</td><td className="px-3 py-2.5 font-medium text-gray-900">Cetirizine</td><td className="px-3 py-2.5">3</td><td className="px-3 py-2.5">2000</td><td className="px-3 py-2.5">2000</td><td className="px-3 py-2.5">24%</td><td className="px-3 py-2.5 text-right font-semibold">₹500</td></tr>
-                          <tr><td className="px-3 py-2.5">4</td><td className="px-3 py-2.5 font-medium text-gray-900">Ceftriaxone 20</td><td className="px-3 py-2.5">4</td><td className="px-3 py-2.5">3000</td><td className="px-3 py-2.5">3400</td><td className="px-3 py-2.5">18%</td><td className="px-3 py-2.5 text-right font-semibold">₹600</td></tr>
-                          <tr><td className="px-3 py-2.5">5</td><td className="px-3 py-2.5 font-medium text-gray-900">Ondansetron</td><td className="px-3 py-2.5">3</td><td className="px-3 py-2.5">4500</td><td className="px-3 py-2.5">1200</td><td className="px-3 py-2.5">16%</td><td className="px-3 py-2.5 text-right font-semibold">₹800</td></tr>
-                        </>
+                        <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-400">No items — add products above to preview</td></tr>
                       ) : (
                         items.filter(r => r.product !== 'Select').map((r, i) => (
                           <tr key={r.id}>

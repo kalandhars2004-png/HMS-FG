@@ -331,6 +331,11 @@ export const UsersAPI = {
     const res = await ApiClient.get<ApiResponse>('/users/current');
     return extractSingle(res, 'user');
   },
+  // Staff who can bill at the POS ("Who is Billing?" popup), scoped to current branch.
+  getBillers: async () => {
+    const res = await ApiClient.get<ApiResponse>('/users/billers');
+    return { data: extractList(res, 'users') };
+  },
 };
 interface UserResponse { id: number; name: string; email: string; role: string; phoneNumber?: string; branchId?: number | null; branchName?: string | null; organizationId?: number | null; }
 
@@ -445,6 +450,21 @@ export const SalesOrdersAPI = {
   updateStatus: (id: string, status: string) => ApiClient.put(`/sales-orders/status/${id}`, { status }),
   updatePayment: (id: string, paymentStatus: string) => ApiClient.put(`/sales-orders/payment/${id}`, { paymentStatus }),
   delete: (id: string) => ApiClient.delete(`/sales-orders/delete/${id}`),
+};
+
+export const PurchaseOrdersAPI = {
+  getAll: async () => {
+    const res = await ApiClient.get<ApiResponse>('/purchase-orders/all');
+    return { data: extractList(res, 'purchaseOrders') };
+  },
+  getById: async (id: string) => {
+    const res = await ApiClient.get<ApiResponse>(`/purchase-orders/${id}`);
+    return extractSingle(res, 'purchaseOrder');
+  },
+  create: (data: unknown) => ApiClient.post('/purchase-orders/add', data),
+  updateStatus: (id: string, status: string) => ApiClient.put(`/purchase-orders/status/${id}`, { status }),
+  receive: (id: string) => ApiClient.post(`/purchase-orders/${id}/receive`, {}),
+  delete: (id: string) => ApiClient.delete(`/purchase-orders/delete/${id}`),
 };
 
 // ---- Stock Counts (Cycle Counting) ----

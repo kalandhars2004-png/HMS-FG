@@ -3,13 +3,7 @@
 import { Stethoscope, Phone, Mail, Search, Plus } from '@/components/ui/LucideIcon';
 
 export default function DoctorsPage() {
-  const doctors = [
-    { name: 'Dr. Michael Anderson', specialty: 'Cardiologist', phone: '+1 (555) 123-4567', email: 'michael.anderson@med.com', patients: 145, status: 'Available' },
-    { name: 'Dr. Emily Thompson', specialty: 'Pediatrician', phone: '+1 (555) 234-5678', email: 'emily.thompson@med.com', patients: 98, status: 'Available' },
-    { name: 'Dr. David Wilson', specialty: 'Neurologist', phone: '+1 (555) 345-6789', email: 'david.wilson@med.com', patients: 67, status: 'Busy' },
-    { name: 'Dr. Sophia Martinez', specialty: 'Dermatologist', phone: '+1 (555) 456-7890', email: 'sophia.martinez@med.com', patients: 112, status: 'Available' },
-    { name: 'Dr. James Carter', specialty: 'Orthopedist', phone: '+1 (555) 567-8901', email: 'james.carter@med.com', patients: 84, status: 'Offline' },
-  ];
+  const doctors: Array<{ name: string; specialty: string; phone: string; email: string; patients: number; status: string }> = [];
 
   return (
     <div>
@@ -30,7 +24,9 @@ export default function DoctorsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {doctors.map((doc, i) => (
+        {doctors.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-sm text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">No doctors — doctors are not yet available in the API. Dummy data removed.</div>
+        ) : doctors.map((doc, i) => (
           <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-lg">

@@ -142,33 +142,7 @@ export default function PurchaseReportsPage() {
         };
       });
 
-      if (mapped.length === 0) {
-        const tmplVendors = ['MedLife Distributors','HealthCare Pharma','GreenCross Medicals','NovaCure Pharma','CareWell Agency','Zenith Distributors','LifeLine Pharma','SafeMeds Distribution','NovaHealth Pharma','PrimeCare Pharma'];
-        const tmplProducts = ['Paracetamol 500mg','Amoxicillin 250mg','Cetirizine 10mg','Vitamin D3','Ibuprofen 400mg','Metformin 500mg','Azithromycin 500mg'];
-        const tmplDates = ['2026-01-28','2026-02-15','2026-03-10','2026-04-14','2026-05-30','2026-06-02','2026-07-07','2026-08-21','2026-11-17','2026-12-10'];
-        const tmplStatus: Status[] = ['Paid','Pending','Paid','Partially Paid','Partially Paid','Pending','Paid','Pending','Partially Paid','Paid'];
-        // realistic INR pricing (₹)
-        const units = [420, 890, 310, 560, 680, 950, 1250, 680, 420, 1590];
-        const amounts = [840, 3560, 1550, 1680, 4080, 3800, 3750, 4080, 420, 9540];
-        for (let i=0;i<10;i++){
-          const d = new Date(tmplDates[i]);
-          mapped.push({
-            id: `#PUR${String(i+16).padStart(3,'0')}`,
-            rawId: i+16,
-            date: d.toLocaleDateString('en-GB',{day:'2-digit', month:'short', year:'numeric'}),
-            dateISO: tmplDates[i],
-            vendor: tmplVendors[i],
-            vendorId: tmplVendors[i],
-            product: tmplProducts[i % tmplProducts.length],
-            productId: tmplProducts[i % tmplProducts.length],
-            quantity: [2,4,5,3,6,4,3,6,1,6][i],
-            unitPrice: units[i],
-            tax: [18,12,18,12,5,12,18,5,5,18][i],
-            amount: amounts[i],
-            status: tmplStatus[i],
-          });
-        }
-      }
+      // dummy fallback removed — keep empty to show real data only
 
       setRows(mapped);
       setSuppliers((supRes as any).data || []);

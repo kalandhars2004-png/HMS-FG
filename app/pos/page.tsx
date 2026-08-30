@@ -62,6 +62,12 @@ export default function POSPage() {
   const [loading, setLoading] = useState(true);
   const [cashier, setCashier] = useState('Cashier');
 
+  // ─── Who is Billing ───
+  const [biller, setBiller] = useState<{ id: number; name: string; role?: string } | null>(null);
+  const [billers, setBillers] = useState<any[]>([]);
+  const [showBillerModal, setShowBillerModal] = useState(false);
+  const billerPromptedRef = useRef(false);
+
   // ─── Search & Filter ───
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -152,7 +158,11 @@ export default function POSPage() {
       setProducts(mapped);
       const cats = Array.from(new Set(mapped.map((p: any) => p.categoryName).filter(Boolean))) as string[];
       setCategories(cats);
-      if (user?.name) setCashier(user.name);
+      // Default biller = the signed-in cashier; popup lets them change it.
+      if (user?.name) {
+        setCashier(user.name);
+        setBiller(prev => prev ?? { id: user.id, name: user.name, role: user.role });
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -168,6 +178,17 @@ export default function POSPage() {
 
   useEffect(() => { searchRef.current?.focus(); }, [loading]);
   useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  // "Who is Billing?" asks the cashier to confirm which staff member bills.
+  // Asks once per entry to this page (reloads / branch switches re-prompt too).
+  useEffect(() => {
+    if (billerPromptedRef.current) return;
+    billerPromptedRef.current = true;
+    UsersAPI.getBillers()
+      .then(({ data }) => setBillers(Array.isArray(data) ? data : []))
+      .finally(() => setShowBillerModal(true));
+  }, []);
+
   useEffect(() => {
     const onFocus = () => { if (!loading) { beginSilentScope(); Promise.resolve(loadProducts()).finally(endSilentScope); } };
     window.addEventListener('focus', onFocus);
@@ -182,7 +203,7 @@ export default function POSPage() {
       if (e.key === 'F2') { e.preventDefault(); setShowCustomerModal(true); return; }
       if (e.key === 'F5' && cart.length > 0 && grandTotal > 0) { e.preventDefault(); setShowPaymentModal(true); return; }
       if (e.key === 'F8') { e.preventDefault(); newBill(); return; }
-      if (e.key === 'Escape') { setShowCustomerModal(false); setShowPaymentModal(false); setBarcodeMode(false); return; }
+      if (e.key === 'Escape') { setShowCustomerModal(false); setShowPaymentModal(false); setBarcodeMode(false); setShowBillerModal(false); return; }
       if (e.ctrlKey && e.key === 'b') { e.preventDefault(); setBarcodeMode(true); setTimeout(() => barcodeRef.current?.focus(), 100); return; }
     };
     window.addEventListener('keydown', h);
@@ -231,6 +252,7 @@ export default function POSPage() {
   const generateReceiptMessage = useCallback(() => {
     let msg = `*DreamsPOS Receipt*\n`;
     msg += `Date: ${formatDate(new Date())} ${formatTime(new Date())}\n`;
+    msg += `Billed by: ${biller?.name || 'Cashier'}\n`;
     msg += `Customer: ${customer.name}\n`;
     if (lastReceipt) msg += `Receipt: ${lastReceipt}\n`;
     msg += `----------------\n`;
@@ -240,7 +262,7 @@ export default function POSPage() {
     msg += `----------------\n`;
     msg += `Total: ${formatCurrency(grandTotal)}\n`;
     return msg;
-  }, [cart, customer, lastReceipt, grandTotal]);
+  }, [cart, customer, lastReceipt, grandTotal, biller]);
 
   const filteredProducts = useMemo(() => {
     let f = products.filter(p => p.stockQuantity > 0 && !isExpired(p.expiryDate));
@@ -279,6 +301,8 @@ export default function POSPage() {
           discountAmount: item.discountAmt * item.quantity,
           taxAmount: item.taxAmt * item.quantity,
           totalPrice: item.totalPrice,
+          billerId: biller?.id,
+          billerName: biller?.name,
         });
       }
       const invNum = `INV-${Date.now().toString().slice(-6)}`;
@@ -357,7 +381,15 @@ export default function POSPage() {
           <button className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500"><Calculator className="w-4 h-4" /></button>
           <button className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500"><Bell className="w-4 h-4" /></button>
           <Link href="/settings/business" className="w-8 h-8 hidden lg:inline-flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500"><Settings className="w-4 h-4" /></Link>
-          <img src="https://i.pravatar.cc/100?img=28" alt="user" className="w-8 h-8 rounded-full object-cover border" />
+          <button onClick={() => setShowBillerModal(true)} title="Change who is billing" className="flex items-center gap-2 group">
+            <span className="hidden xl:flex flex-col items-end text-right">
+              <span className="text-xs font-bold text-gray-900 leading-tight">{biller?.name || 'Cashier'}</span>
+              <span className="text-[10px] text-gray-400">Billing as</span>
+            </span>
+            <span className="w-8 h-8 rounded-full bg-[#0F9291]/10 text-[#0F9291] text-xs font-bold flex items-center justify-center border border-[#0F9291]/20 group-hover:bg-[#0F9291]/20 transition">
+              {(biller?.name || 'C').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('')}
+            </span>
+          </button>
         </div>
       </header>
 
@@ -599,6 +631,45 @@ export default function POSPage() {
       )}
 
       {/* ─── MODALS: keep our functional modals styled like dream ─── */}
+      {showBillerModal && (
+        <GlobalModal onClose={() => setShowBillerModal(false)} title="Who is Billing?" icon={<Users className="w-5 h-5" />} size="md" hideFooter>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">
+              Select the staff member who is billing this sale. Bills are recorded under their name.
+            </p>
+            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border rounded-xl">
+              {billers.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-gray-400">No other staff found — you are the biller.</div>
+              )}
+              {billers.map((u: any) => {
+                const isActive = biller?.id === u.id;
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setBiller({ id: u.id, name: u.name, role: u.role });
+                      setCashier(u.name);
+                      setShowBillerModal(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition ${isActive ? 'bg-[#0F9291]/5' : ''}`}
+                  >
+                    <span className={`w-9 h-9 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${isActive ? 'bg-[#0F9291] text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      {String(u.name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('')}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold text-gray-900 truncate">{u.name}</span>
+                      <span className="block text-xs text-gray-500 truncate">{String(u.role || '').replace(/_/g, ' ')} {u.branchName ? `· ${u.branchName}` : ''}</span>
+                    </span>
+                    {isActive && <Check className="w-5 h-5 text-[#0F9291]" />}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-400">Tip: you can change this anytime from the avatar in the top-right.</p>
+          </div>
+        </GlobalModal>
+      )}
+
       {showCustomerModal && (
         <GlobalModal onClose={()=>setShowCustomerModal(false)} title="Select Customer" icon={<User className="w-5 h-5" />} size="lg">
           <div className="space-y-3">

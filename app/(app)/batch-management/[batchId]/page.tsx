@@ -26,35 +26,11 @@ interface BatchEntry {
   status: 'Active' | 'Near Expiry' | 'Expired';
 }
 
-const SUPPLIERS = ['MedLife Distributors', 'PharmaCare Wholesale', 'HealthFirst Logistics', 'MediSync Supplies', 'CureWell Traders', 'VitalCare Solutions'];
-const AVATARS = ['BM', 'SW', 'CD', 'TH', 'EC', 'PE'];
+const SUPPLIERS: string[] = [];
+const AVATARS: string[] = [];
 
-const generateBatches = (productId: string): BatchEntry[] => {
-  const baseDate = new Date(2026, 3, 20);
-  const statuses: BatchEntry['status'][] = ['Active', 'Active', 'Active', 'Active', 'Near Expiry', 'Expired'];
-  return statuses.map((status, i) => {
-    const dayOffset = i * 10;
-    const d = new Date(baseDate);
-    d.setDate(d.getDate() - dayOffset);
-    const expiry = new Date(d);
-    expiry.setFullYear(expiry.getFullYear() + (status === 'Expired' ? 0 : status === 'Near Expiry' ? 1 : 2));
-    if (status === 'Expired') expiry.setDate(expiry.getDate() - 60);
-    if (status === 'Near Expiry') expiry.setDate(expiry.getDate() + 30);
-    const received = [180, 200, 150, 120, 160, 120][i];
-    const sold = received - [150, 120, 70, 50, 20, 10][i];
-    return {
-      batchNo: `BT${d.toLocaleDateString('en-GB').replace(/\//g, '')}${String(i + 1).padStart(2, '0')}`,
-      rackNo: ['R1S1A1', 'R1S2A4', 'R3S1A3', 'R1S1B2', 'R2S1B4', 'R1S2B2'][i],
-      purchaseDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      expiryDate: expiry.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      qtyReceived: received,
-      qtySold: sold,
-      qtyAvailable: received - sold,
-      supplier: { name: SUPPLIERS[i], avatar: AVATARS[i] },
-      status,
-    };
-  });
-};
+// Real batches — fetched from BatchesAPI, dummy generator removed
+const generateBatches = (productId: string): BatchEntry[] => [];
 
 const statusBadge = (status: BatchEntry['status']) => {
   const map = {
@@ -98,14 +74,7 @@ function AnimatedProgress({ value, max, color, label, valueLabel }: { value: num
   );
 }
 
-const timelineEvents = [
-  { type: 'Received', date: '15 Mar 2026', time: '09:30 AM', user: 'Rajesh Kumar', remarks: 'Batch received from supplier', icon: Truck, color: 'bg-emerald-500' },
-  { type: 'Transferred', date: '18 Mar 2026', time: '11:15 AM', user: 'Anil Verma', remarks: 'Transferred to Warehouse A', icon: MapPin, color: 'bg-blue-500' },
-  { type: 'Sold', date: '22 Mar 2026', time: '02:45 PM', user: 'Priya Sharma', remarks: 'Sold 50 units to customer', icon: TrendingDown, color: 'bg-amber-500' },
-  { type: 'Adjusted', date: '05 Apr 2026', time: '10:00 AM', user: 'Rajesh Kumar', remarks: 'Stock adjustment - damage write-off', icon: AlertTriangle, color: 'bg-orange-500' },
-  { type: 'Sold', date: '12 Apr 2026', time: '04:20 PM', user: 'Sunita Patel', remarks: 'Sold 30 units', icon: TrendingDown, color: 'bg-amber-500' },
-  { type: 'Returned', date: '18 Apr 2026', time: '01:10 PM', user: 'Anil Verma', remarks: '10 units returned by customer', icon: RefreshCw, color: 'bg-purple-500' },
-];
+const timelineEvents: Array<{ type: string; date: string; time: string; user: string; remarks: string; icon: typeof Truck; color: string }> = [];
 
 const categoryGradients: Record<string, string> = {
   Tablet: 'from-[#0F9291]/20 to-[#14B8A6]/10',
@@ -128,14 +97,14 @@ export default function BatchDetailsPage() {
     }).catch(() => setProduct(null));
   }, [batchId]);
 
-  const batches = useMemo(() => product ? generateBatches(product.id) : [], [product]);
+  const batches: BatchEntry[] = [];
 
-  if (!product || batches.length === 0) {
+  if (!product) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Package className="w-16 h-16 text-gray-300" />
-        <h3 className="text-xl font-bold text-gray-900 m-0">Batch not found</h3>
-        <p className="text-sm text-gray-400 m-0">The requested batch could not be located.</p>
+        <h3 className="text-xl font-bold text-gray-900 m-0">Product not found</h3>
+        <p className="text-sm text-gray-400 m-0">The requested product could not be located.</p>
         <Link href="/batch-management" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0F9291] text-white text-sm font-semibold hover:bg-teal-700 transition-all no-underline">
           <ArrowLeft className="w-4 h-4" /> Back to Batch Management
         </Link>
@@ -153,7 +122,7 @@ export default function BatchDetailsPage() {
   const activeCount = batches.filter(b => b.status === 'Active').length;
   const nearCount = batches.filter(b => b.status === 'Near Expiry').length;
   const expiredCount = batches.filter(b => b.status === 'Expired').length;
-  const primaryBatch = batches[0];
+  const primaryBatch: BatchEntry = batches[0] || { batchNo: '—', rackNo: '—', purchaseDate: '—', expiryDate: '—', qtyReceived: 0, qtySold: 0, qtyAvailable: 0, supplier: { name: '—', avatar: '' }, status: 'Active' } as BatchEntry;
 
   const daysToExpiry = 245;
 

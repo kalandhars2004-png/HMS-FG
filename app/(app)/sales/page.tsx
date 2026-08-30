@@ -40,18 +40,8 @@ function deterministicPaidRatio(id: string): number {
   return 0.2 + ((Math.abs(n) % 50) / 100); // 0.2 .. 0.69
 }
 
-const OUTSTANDING_DEMO: OutstandingRow[] = [
-  { id: '46', invoiceNo: '#INV046', customerName: 'Jane Cooper', invoiceDate: '28 Jan 2026', invoiceDateObj: new Date('2026-01-28'), dueDate: '28 Jan 2027', dueDateObj: new Date('2027-01-28'), totalAmount: 3400, paidAmount: 1100, pendingAmount: 2300, status: 'Pending' },
-  { id: '56', invoiceNo: '#INV056', customerName: 'Wade Warren', invoiceDate: '15 Feb 2026', invoiceDateObj: new Date('2026-02-15'), dueDate: '15 Feb 2027', dueDateObj: new Date('2027-02-15'), totalAmount: 12800, paidAmount: 12800, pendingAmount: 0, status: 'Paid' },
-  { id: '66', invoiceNo: '#INV066', customerName: 'Cameron Williamson', invoiceDate: '10 Mar 2026', invoiceDateObj: new Date('2026-03-10'), dueDate: '10 Mar 2027', dueDateObj: new Date('2027-03-10'), totalAmount: 4250, paidAmount: 2100, pendingAmount: 2150, status: 'Pending' },
-  { id: '76', invoiceNo: '#INV076', customerName: 'Brooklyn Simmons', invoiceDate: '14 Apr 2026', invoiceDateObj: new Date('2026-04-14'), dueDate: '14 Apr 2027', dueDateObj: new Date('2027-04-14'), totalAmount: 5600, paidAmount: 1800, pendingAmount: 3800, status: 'Pending' },
-  { id: '86', invoiceNo: '#INV086', customerName: 'Leslie Alexander', invoiceDate: '30 May 2026', invoiceDateObj: new Date('2026-05-30'), dueDate: '30 May 2027', dueDateObj: new Date('2027-05-30'), totalAmount: 8900, paidAmount: 8900, pendingAmount: 0, status: 'Paid' },
-  { id: '96', invoiceNo: '#INV096', customerName: 'Robert Fox', invoiceDate: '02 Jun 2026', invoiceDateObj: new Date('2026-06-02'), dueDate: '02 Jun 2027', dueDateObj: new Date('2027-06-02'), totalAmount: 11200, paidAmount: 4800, pendingAmount: 6400, status: 'Pending' },
-  { id: '06', invoiceNo: '#INV006', customerName: 'Micheal John', invoiceDate: '07 Jul 2026', invoiceDateObj: new Date('2026-07-07'), dueDate: '07 Jul 2027', dueDateObj: new Date('2027-07-07'), totalAmount: 15600, paidAmount: 15600, pendingAmount: 0, status: 'Paid' },
-  { id: '26', invoiceNo: '#INV026', customerName: 'Darlene Robertson', invoiceDate: '21 Aug 2026', invoiceDateObj: new Date('2026-08-21'), dueDate: '21 Aug 2027', dueDateObj: new Date('2027-08-21'), totalAmount: 7400, paidAmount: 5200, pendingAmount: 2200, status: 'Pending' },
-  { id: '346', invoiceNo: '#INV346', customerName: 'Dianne Russell', invoiceDate: '17 Nov 2026', invoiceDateObj: new Date('2026-11-17'), dueDate: '17 Nov 2027', dueDateObj: new Date('2027-11-17'), totalAmount: 6400, paidAmount: 2800, pendingAmount: 3600, status: 'Pending' },
-  { id: '98', invoiceNo: '#INV098', customerName: 'Devon Lane', invoiceDate: '10 Dec 2026', invoiceDateObj: new Date('2026-12-10'), dueDate: '10 Dec 2027', dueDateObj: new Date('2027-12-10'), totalAmount: 18200, paidAmount: 18200, pendingAmount: 0, status: 'Paid' },
-];
+// No dummy fallback — real API data only; empty when no invoices/transactions
+const OUTSTANDING_DEMO: OutstandingRow[] = [];
 
 function CustomerOutstandingView() {
   const [rows, setRows] = useState<OutstandingRow[]>([]);
@@ -181,7 +171,7 @@ function CustomerOutstandingView() {
         });
       }
 
-      if (mapped.length === 0) mapped = OUTSTANDING_DEMO;
+      // No dummy fallback — real API data only; keep mapped as [] when empty
 
       if (mapped.length) {
         const vals = mapped.map(r => r.totalAmount);
@@ -196,7 +186,8 @@ function CustomerOutstandingView() {
 
       setRows(mapped);
     } catch {
-      setRows(OUTSTANDING_DEMO);
+      // No dummy fallback — show empty
+      setRows([]);
     } finally { setLoading(false); }
   }, []);
 

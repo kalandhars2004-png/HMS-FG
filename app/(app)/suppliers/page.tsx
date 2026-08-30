@@ -253,22 +253,8 @@ function SuppliersInner() {
     invoiceNo: string; date: string; dateObj: Date | null; paymentType: string; paid: number; outstanding: number; status: 'Paid' | 'Partially Paid' | 'Overdue'; total: number;
   };
   const paymentRows: PayRow[] = useMemo(() => {
-    if (!purchaseOrders.length) {
-      // fallback demo rows matching reference exactly
-      const demo: PayRow[] = [
-        { id: '#VPS016', poId: 16, supplierName: 'MedLife Distributors', supplierId: 1, invoiceNo: 'INV001', date: '28 Jan 2026', dateObj: new Date('2026-01-28'), paymentType: 'Card', paid: 120, outstanding: 0, status: 'Paid', total: 120 },
-        { id: '#VPS017', poId: 17, supplierName: 'HealthCare Pharma', supplierId: 2, invoiceNo: 'INV002', date: '15 Feb 2026', dateObj: new Date('2026-02-15'), paymentType: 'UPI', paid: 20, outstanding: 20, status: 'Overdue', total: 40 },
-        { id: '#VPS018', poId: 18, supplierName: 'GreenCross Medicals', supplierId: 3, invoiceNo: 'INV003', date: '10 Mar 2026', dateObj: new Date('2026-03-10'), paymentType: 'Card', paid: 100, outstanding: 0, status: 'Paid', total: 100 },
-        { id: '#VPS019', poId: 19, supplierName: 'NovaCure Pharma', supplierId: 4, invoiceNo: 'INV004', date: '14 Apr 2026', dateObj: new Date('2026-04-14'), paymentType: 'Cash', paid: 20, outstanding: 15, status: 'Partially Paid', total: 35 },
-        { id: '#VPS020', poId: 20, supplierName: 'CareWell Agency', supplierId: 5, invoiceNo: 'INV005', date: '30 May 2026', dateObj: new Date('2026-05-30'), paymentType: 'Card', paid: 100, outstanding: 20, status: 'Partially Paid', total: 120 },
-        { id: '#VPS021', poId: 21, supplierName: 'Zenith Distributors', supplierId: 6, invoiceNo: 'INV006', date: '02 Jun 2026', dateObj: new Date('2026-06-02'), paymentType: 'UPI', paid: 25, outstanding: 25, status: 'Overdue', total: 50 },
-        { id: '#VPS022', poId: 22, supplierName: 'LifeLine Pharma', supplierId: 7, invoiceNo: 'INV007', date: '07 Jul 2026', dateObj: new Date('2026-07-07'), paymentType: 'Card', paid: 130, outstanding: 0, status: 'Paid', total: 130 },
-        { id: '#VPS023', poId: 23, supplierName: 'SafeMeds Distribution', supplierId: 8, invoiceNo: 'INV008', date: '21 Aug 2026', dateObj: new Date('2026-08-21'), paymentType: 'UPI', paid: 90, outstanding: 90, status: 'Overdue', total: 180 },
-        { id: '#VPS024', poId: 24, supplierName: 'NovaHealth Pharma', supplierId: 9, invoiceNo: 'INV009', date: '17 Nov 2026', dateObj: new Date('2026-11-17'), paymentType: 'Cash', paid: 30, outstanding: 30, status: 'Partially Paid', total: 60 },
-        { id: '#VPS025', poId: 25, supplierName: 'PrimeCare Pharma', supplierId: 10, invoiceNo: 'INV010', date: '10 Dec 2026', dateObj: new Date('2026-12-10'), paymentType: 'Card', paid: 80, outstanding: 0, status: 'Paid', total: 80 },
-      ];
-      return demo;
-    }
+    // No dummy fallback — real API data only; show empty state when no purchaseOrders
+    if (!purchaseOrders.length) return [];
     return purchaseOrders.map(po => {
       const supplier = suppliers.find(s => s.id === Number(po.supplierId));
       const supplierName = supplier?.name || `Supplier #${po.supplierId}`;

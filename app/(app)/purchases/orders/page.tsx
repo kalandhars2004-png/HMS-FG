@@ -9,6 +9,8 @@ import {
   ShoppingBag, Truck, CheckCircle2, ArrowDownRight, ArrowUpRight,
 } from '@/components/ui/LucideIcon';
 import GlobalModal, { GlobalConfirmModal } from '@/components/ui/GlobalModal';
+import { PurchaseOrdersAPI } from '@/lib/api';
+import { useBranch } from '@/lib/branch-context';
 
 /* ───────────── Types & Demo Data (DreamPOS Purchase Orders) ───────────── */
 
@@ -321,7 +323,8 @@ const thCls = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
 const tdCls = 'px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap';
 
 export default function PurchaseOrdersPage() {
-  const [rows, setRows] = useState<PurchaseOrder[]>(INITIAL_ROWS);
+  const [rows, setRows] = useState<PurchaseOrder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [datePreset, setDatePreset] = useState('all');
@@ -351,6 +354,35 @@ export default function PurchaseOrdersPage() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const { selectedBranchId } = useBranch();
+
+  // Real data — no dummy. Previously INITIAL_ROWS was static DreamPOS demo.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    PurchaseOrdersAPI.getAll().then((res) => {
+      if (cancelled) return;
+      const list = (res.data || []).map((po: any) => ({
+        id: po.poNumber || `#PO${po.id}`,
+        vendor: po.supplierName || `Supplier #${po.supplierId}`,
+        ordered: po.orderDate ? new Date(po.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        expected: po.expectedDelivery ? new Date(po.expectedDelivery).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        items: po.items?.length ?? 0,
+        amount: Number(po.totalAmount ?? 0),
+        status: (po.status || 'Draft') as PurchaseOrder['status'],
+      }));
+      setRows(list);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedBranchId]);
+
+  // Branch switch should reset page
+  useEffect(() => {
+    const h = () => setPage(1);
+    window.addEventListener('ims:branch-changed', h);
+    return () => window.removeEventListener('ims:branch-changed', h);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

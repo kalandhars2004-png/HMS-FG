@@ -58,7 +58,7 @@ function getRefundDot(status: string) {
 }
 
 export default function SalesReturnPage() {
-  const [returns, setReturns] = useState<SalesReturn[]>(MOCK_RETURNS);
+  const [returns, setReturns] = useState<SalesReturn[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilter, setShowFilter] = useState(false);
