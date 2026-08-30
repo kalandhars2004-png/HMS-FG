@@ -6,6 +6,7 @@ import {
   Search, Bell, Settings, ChevronDown, LogOut, Command,
   UserCog, BarChart3, Pill, Moon, Sun,
   Building2, Database, ShoppingCart, Package, AlertTriangle, Clock, Ban, TrendingUp, CheckCheck,
+  Store, Warehouse, Layers, Check, X,
 } from '@/components/ui/LucideIcon';
 import { useTheme } from '@/lib/theme-context';
 import { isAnyModalOpen } from '@/lib/modal-guard';
@@ -146,6 +147,10 @@ export default function Navbar() {
   const [notifs, setNotifs] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const [branchQuery, setBranchQuery] = useState('');
+  const branchRef = useRef<HTMLDivElement>(null);
+  const branchBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -180,10 +185,11 @@ export default function Navbar() {
     setShowNotifications(false);
     setShowProfile(false);
     setShowSettings(false);
+    setBranchOpen(false);
   }, []);
 
   useOutsideClick(
-    [notifRef, notifBtnRef, profileRef, profileBtnRef, settingsRef, settingsBtnRef] as React.RefObject<HTMLElement | null>[],
+    [notifRef, notifBtnRef, profileRef, profileBtnRef, settingsRef, settingsBtnRef, branchRef, branchBtnRef] as React.RefObject<HTMLElement | null>[],
     closeAll
   );
   useEscape(closeAll);
@@ -202,23 +208,64 @@ export default function Navbar() {
           <h4 className="hidden lg:block m-0 text-base font-semibold text-gray-900 dark:text-white ml-1">
             {getPageTitle(pathname)}
           </h4>
-          {/* Current Branch indicator — SuperAdmin only, persists across navigation (§28) */}
+          {/* Current Branch — premium searchable dropdown (SuperAdmin only) */}
           {isSuperAdmin && branches.length > 0 && (
             <div className="hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-gray-200 dark:border-gray-700">
-              <Building2 className="w-4 h-4 text-[#0F9291]" />
-              <span className="text-xs font-medium text-gray-500">Current Branch:</span>
-              <div className="relative">
-                <select
-                  value={selectedBranchId ?? ''}
-                  onChange={(e) => selectBranch(e.target.value || null)}
-                  className="h-8 pl-2 pr-7 bg-white dark:bg-[#1a1a24] border border-gray-200 dark:border-[#2a2a38] rounded-lg text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/20 appearance-none cursor-pointer"
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500">
+                <Building2 className="w-4 h-4 text-[#0F9291]" />
+                <span className="hidden lg:inline">Current Branch:</span>
+              </div>
+              <div className="relative" ref={branchRef}>
+                <button
+                  ref={branchBtnRef}
+                  onClick={() => setBranchOpen(o => !o)}
+                  className="h-9 min-w-[180px] inline-flex items-center gap-2 pl-2 pr-8 bg-white dark:bg-[#1a1a24] border border-gray-200 dark:border-[#2a2a38] rounded-xl text-sm font-medium hover:border-[#0F9291]/40 hover:shadow-sm transition-all text-left"
                 >
-                  <option value="">All Branches</option>
-                  {branches.filter(b => b.status === 'ACTIVE').map((b) => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${selectedBranch ? 'bg-[#0F9291] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-500'}`}>
+                    {selectedBranch ? (selectedBranch.type === 'CENTRAL_WAREHOUSE' ? <Warehouse className="w-3.5 h-3.5" /> : selectedBranch.type === 'WAREHOUSE' ? <Store className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />) : <Layers className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="block text-sm font-semibold leading-none truncate text-gray-900 dark:text-white">{selectedBranch ? selectedBranch.name : 'All Branches'}</span>
+                    <span className="block text-[11px] text-gray-500 truncate">{selectedBranch ? `${selectedBranch.code} · ${selectedBranch.type}` : 'Global'}</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${branchOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {branchOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-[320px] rounded-2xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#0F1525] shadow-xl shadow-black/10 overflow-hidden animate-slideDown z-50">
+                    <div className="p-2.5 border-b border-gray-100 dark:border-[#273244]">
+                      <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          autoFocus
+                          value={branchQuery}
+                          onChange={e => setBranchQuery(e.target.value)}
+                          placeholder="Search branch..."
+                          className="w-full h-9 pl-9 pr-8 text-sm bg-gray-50 dark:bg-[#1A2232] border border-gray-200 dark:border-[#273244] rounded-xl focus:outline-none focus:border-[#0F9291] focus:ring-2 focus:ring-[#0F9291]/10"
+                        />
+                        {branchQuery && <button onClick={() => setBranchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>}
+                      </div>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto p-1.5 space-y-0.5">
+                      <button onClick={() => { selectBranch(null); setBranchOpen(false); setBranchQuery(''); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left hover:bg-gray-50 dark:hover:bg-white/[0.04] ${!selectedBranchId ? 'bg-[#0F9291]/10 ring-1 ring-[#0F9291]/20' : ''}`}>
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${!selectedBranchId ? 'bg-[#0F9291] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-500'}`}><Layers className="w-4 h-4" /></span>
+                        <span className="min-w-0 flex-1"><span className={`block text-sm truncate ${!selectedBranchId ? 'font-semibold text-[#0F9291]' : 'font-medium text-gray-900 dark:text-white'}`}>All Branches</span><span className="block text-xs text-gray-500 truncate">Global view</span></span>
+                        {!selectedBranchId && <Check className="w-4 h-4 text-[#0F9291] shrink-0" />}
+                      </button>
+                      {branches.filter(b => b.status === 'ACTIVE').filter(b => !branchQuery || `${b.name} ${b.code} ${b.city ?? ''}`.toLowerCase().includes(branchQuery.toLowerCase())).map(b => {
+                        const active = String(b.id) === String(selectedBranchId);
+                        const Icon = b.type === 'CENTRAL_WAREHOUSE' ? Warehouse : b.type === 'WAREHOUSE' ? Store : Building2;
+                        return (
+                          <button key={String(b.id)} onClick={() => { selectBranch(String(b.id)); setBranchOpen(false); setBranchQuery(''); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left hover:bg-gray-50 dark:hover:bg-white/[0.04] ${active ? 'bg-[#0F9291]/10 ring-1 ring-[#0F9291]/20' : ''}`}>
+                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-[#0F9291] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-500'}`}><Icon className="w-4 h-4" /></span>
+                            <span className="min-w-0 flex-1"><span className={`block text-sm truncate ${active ? 'font-semibold text-[#0F9291]' : 'font-medium text-gray-900 dark:text-white'}`}>{b.name}</span><span className="block text-xs text-gray-500 truncate">{b.code} {b.city ? `· ${b.city}` : ''} <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${b.type === 'RETAIL' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700'}`}>{b.type}</span></span></span>
+                            {active && <Check className="w-4 h-4 text-[#0F9291] shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
