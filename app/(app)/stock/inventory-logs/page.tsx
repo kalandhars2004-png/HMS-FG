@@ -7,7 +7,9 @@ import {
   EllipsisVertical, Filter, Columns, CalendarDays, Check,
   FileSpreadsheet, Printer, ArrowUpToLine, ArrowUpDown, House, Pill, Users, Layers,
 } from '@/components/ui/LucideIcon';
-import { ApiClient } from '@/lib/api';
+import { ApiClient, TransactionsAPI } from '@/lib/api';
+import { useBranch } from '@/lib/branch-context';
+import GlobalModal from '@/components/ui/GlobalModal';
 
 /* ───────────── Types ───────────── */
 
@@ -163,9 +165,13 @@ const thCls = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
 const tdCls = 'px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap';
 
 export default function InventoryLogsPage() {
+  const { selectedBranchId, isSuperAdmin } = useBranch();
   const [rows, setRows] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedRef, setSelectedRef] = useState<StockMovement | null>(null);
+  const [refDetail, setRefDetail] = useState<unknown>(null);
+  const [refLoading, setRefLoading] = useState(false);
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -191,10 +197,11 @@ export default function InventoryLogsPage() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // fetch data
+  // fetch data — branch-aware via X-Branch-Id header (ApiClient) + reset on branch switch
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError('');
     ApiClient.get<any>(`/stock-movements/all?page=${page}&size=${pageSize}${debouncedSearch ? `&searchText=${encodeURIComponent(debouncedSearch)}` : ''}`)
       .then((res) => {
         if (cancelled) return;
@@ -210,7 +217,28 @@ export default function InventoryLogsPage() {
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [page, pageSize, debouncedSearch]);
+  }, [page, pageSize, debouncedSearch, selectedBranchId]);
+
+  // Branch switch should reset to first page and refetch (branch header changes)
+  useEffect(() => {
+    const handler = () => setPage(0);
+    window.addEventListener('ims:branch-changed', handler);
+    return () => window.removeEventListener('ims:branch-changed', handler);
+  }, []);
+
+  const handleRefClick = async (r: StockMovement) => {
+    if (!r.referenceId) return;
+    setSelectedRef(r);
+    setRefDetail(null);
+    setRefLoading(true);
+    try {
+      // Transaction is the billing source for PURCHASE/SALE/RETURN
+      const t = await TransactionsAPI.getById(String(r.referenceId));
+      setRefDetail(t);
+    } catch {
+      setRefDetail(null);
+    } finally { setRefLoading(false); }
+  };
 
   // unique items/types for filter sidebar
   const uniqueItems = useMemo(() => [...new Set(rows.map(r => r.productName))].sort(), [rows]);
@@ -226,6 +254,15 @@ export default function InventoryLogsPage() {
   }, [rows, filterItems, filterTypes]);
 
   const activeFilterCount = filterItems.length + filterTypes.length;
+
+  // KPI — how stock came vs sold (billing levels)
+  const kpi = useMemo(() => {
+    const inQty = filtered.reduce((s, r) => s + (r.quantityIn ?? 0), 0);
+    const outQty = filtered.reduce((s, r) => s + (r.quantityOut ?? 0), 0);
+    const purchaseQty = filtered.filter(r => r.movementType === 'PURCHASE').reduce((s, r) => s + (r.quantityIn ?? 0), 0);
+    const saleQty = filtered.filter(r => r.movementType === 'SALE').reduce((s, r) => s + (r.quantityOut ?? 0), 0);
+    return { inQty, outQty, purchaseQty, saleQty, net: inQty - outQty, count: filtered.length };
+  }, [filtered]);
 
   const from = totalElements === 0 ? 0 : page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, totalElements);
@@ -312,9 +349,44 @@ export default function InventoryLogsPage() {
           </div>
         </div>
 
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Inventory Logs</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Track all stock movements across the pharmacy</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Inventory Logs</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Real stock ledger — how stock came (Purchase/Adjustment) vs sold (Sale/Return) with billing link
+              {isSuperAdmin && selectedBranchId && <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-[#0F9291] bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">Branch: {selectedBranchId}</span>}
+              {isSuperAdmin && !selectedBranchId && <span className="ml-2 text-xs text-amber-600">All Branches</span>}
+            </p>
+          </div>
+        </div>
+
+        {/* KPI — Billing level how stock came vs sold */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="bg-white dark:bg-[#0F1525] rounded-2xl border border-gray-100 dark:border-[#273244] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock In</p>
+            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">+{kpi.inQty.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">Purchase {kpi.purchaseQty} units</p>
+          </div>
+          <div className="bg-white dark:bg-[#0F1525] rounded-2xl border border-gray-100 dark:border-[#273244] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock Out</p>
+            <p className="text-xl font-bold text-red-500 mt-1">-{kpi.outQty.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">Sale {kpi.saleQty} units</p>
+          </div>
+          <div className="bg-white dark:bg-[#0F1525] rounded-2xl border border-gray-100 dark:border-[#273244] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Net (page)</p>
+            <p className={`text-xl font-bold mt-1 ${kpi.net >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-600'}`}>{kpi.net >= 0 ? '+' : ''}{kpi.net.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">{kpi.count} movements</p>
+          </div>
+          <div className="bg-white dark:bg-[#0F1525] rounded-2xl border border-gray-100 dark:border-[#273244] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Balance Snapshot</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{filtered[0]?.balanceStock ?? '—'}</p>
+            <p className="text-xs text-gray-500 mt-1">Latest balanceStock</p>
+          </div>
+          <div className="bg-white dark:bg-[#0F1525] rounded-2xl border border-gray-100 dark:border-[#273244] p-4 shadow-sm flex flex-col justify-center">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Billing</p>
+            <p className="text-sm font-semibold text-[#0F9291] mt-1">Click Ref ID → Transaction</p>
+            <p className="text-xs text-gray-500">Purchase/Sale billing linked</p>
+          </div>
         </div>
 
         {/* Card */}
@@ -406,7 +478,7 @@ export default function InventoryLogsPage() {
                       {visibleColumns.includes('quantityIn') && <td className={`${tdCls} ${(r.quantityIn ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : ''}`}>{r.quantityIn ?? 0}</td>}
                       {visibleColumns.includes('quantityOut') && <td className={`${tdCls} ${(r.quantityOut ?? 0) > 0 ? 'text-red-500 dark:text-red-400 font-medium' : ''}`}>{r.quantityOut ?? 0}</td>}
                       {visibleColumns.includes('balanceStock') && <td className={`${tdCls} font-medium`}>{r.balanceStock}</td>}
-                      {visibleColumns.includes('referenceId') && <td className={`${tdCls} text-[#0F9291] font-medium`}>{r.referenceId ? `#${r.referenceType}${r.referenceId}` : '—'}</td>}
+                      {visibleColumns.includes('referenceId') && <td className={`${tdCls} font-medium`}>{r.referenceId ? <button onClick={() => handleRefClick(r)} className="text-[#0F9291] hover:underline hover:text-teal-700 font-semibold">#{r.referenceType}{r.referenceId} ↗</button> : '—'}</td>}
                       {visibleColumns.includes('changedBy') && <td className={tdCls}>{r.changedBy ?? '—'}</td>}
                       {visibleColumns.includes('datetime') && <td className={tdCls}>{formatDateTime(r.createdAt)}</td>}
                     </tr>
@@ -451,6 +523,42 @@ export default function InventoryLogsPage() {
           onCancel={() => setFilterOpen(false)}
           onApply={() => { setFilterItems(draftItems); setFilterTypes(draftTypes); setFilterOpen(false); }}
         />
+      )}
+
+      {/* Billing detail — how stock came / sold */}
+      {selectedRef && (
+        <GlobalModal
+          open
+          onClose={() => setSelectedRef(null)}
+          title={`Billing — ${selectedRef.movementType}`}
+          subtitle={`${selectedRef.productName} (${selectedRef.productSku}) · ${selectedRef.movementType === 'PURCHASE' ? 'Stock In' : selectedRef.movementType === 'SALE' ? 'Stock Sold' : selectedRef.movementType} ${selectedRef.quantityIn ?? selectedRef.quantityOut ?? 0} units`}
+          size="md"
+          hideFooter
+        >
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                <p className="text-xs text-gray-400">Product</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{selectedRef.productName}</p>
+                <p className="text-xs text-[#0F9291]">{selectedRef.productSku} · Batch {selectedRef.batchNo ?? '—'}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                <p className="text-xs text-gray-400">Movement</p>
+                <p className="font-semibold">{selectedRef.movementType} <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${selectedRef.quantityIn ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{selectedRef.quantityIn ? `+${selectedRef.quantityIn}` : `-${selectedRef.quantityOut}`}</span></p>
+                <p className="text-xs text-gray-500">Balance after: {selectedRef.balanceStock}</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-100 dark:border-[#273244] p-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase">Reference (Billing)</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">{selectedRef.referenceType} #{selectedRef.referenceId ?? '—'} {selectedRef.changedBy ? `· by ${selectedRef.changedBy}` : ''}</p>
+              <p className="text-xs text-gray-500">{formatDateTime(selectedRef.createdAt)}</p>
+              {refLoading ? <p className="text-xs text-gray-400 mt-2">Loading billing...</p> : refDetail ? <pre className="text-xs bg-gray-50 dark:bg-[#0F1525] p-2 rounded-lg overflow-x-auto mt-2">{JSON.stringify(refDetail, null, 2).slice(0, 800)}</pre> : <p className="text-xs text-gray-400 mt-2">No additional billing data.</p>}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={() => setSelectedRef(null)} className="h-9 px-4 rounded-xl bg-gray-100 dark:bg-[#232323] text-sm font-semibold">Close</button>
+            </div>
+          </div>
+        </GlobalModal>
       )}
     </div>
   );
