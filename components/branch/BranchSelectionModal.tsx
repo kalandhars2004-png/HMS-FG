@@ -22,16 +22,17 @@ export default function BranchSelectionModal({ open, onClose, allowCancel = fals
 
   useEffect(() => { if (open) setQuery(''); }, [open]);
 
-  if (!isSuperAdmin) return null;
-  if (!open) return null;
-
   const activeBranches = branches.filter(b => b.status === 'ACTIVE');
   const filtered = useMemo(() => {
+    if (!open || !isSuperAdmin) return [];
     const q = query.toLowerCase().trim();
     if (!q) return activeBranches;
     return activeBranches.filter(b => `${b.name} ${b.code} ${b.city ?? ''} ${b.type}`.toLowerCase().includes(q));
-  }, [activeBranches, query]);
+  }, [open, isSuperAdmin, activeBranches, query]);
   const canContinue = !!draftId;
+
+  if (!isSuperAdmin) return null;
+  if (!open) return null;
 
   const handleContinue = () => {
     if (!draftId) return;
