@@ -231,7 +231,9 @@ export default function Navbar() {
                 </button>
 
                 {branchOpen && (
-                  <div className="absolute left-1/2 -translate-x-1/2 lg:left-0 lg:translate-x-0 top-full mt-2.5 w-[340px] rounded-2xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#0F1525] shadow-2xl shadow-black/15 overflow-hidden animate-slideDown z-50">
+                  <>
+                    <div className="absolute left-0 right-0 top-full h-2.5" aria-hidden="true" />
+                    <div className="absolute left-1/2 -translate-x-1/2 lg:left-0 lg:translate-x-0 top-full mt-2.5 w-[340px] rounded-2xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#0F1525] shadow-2xl shadow-black/15 overflow-hidden animate-slideDown z-50">
                     <div className="px-4 py-3 border-b border-gray-100 dark:border-[#273244] bg-gradient-to-br from-[#0F9291]/[0.04] to-teal-500/[0.03] dark:from-white/[0.03] dark:to-transparent">
                       <div className="flex items-center justify-between mb-2.5">
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><Building2 className="w-4 h-4 text-[#0F9291]" />Switch Branch</h4>
@@ -273,6 +275,7 @@ export default function Navbar() {
                       <button onClick={() => setBranchOpen(false)} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-[#0F9291] px-2 py-1 rounded-lg hover:bg-white dark:hover:bg-white/5 transition-colors">Close</button>
                     </div>
                   </div>
+                  </>
                 )}
               </div>
             </div>

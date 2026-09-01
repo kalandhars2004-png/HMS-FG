@@ -69,7 +69,8 @@ export default function BranchSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute z-40 left-0 right-0 mt-2 rounded-2xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#0F1525] shadow-xl shadow-black/10 overflow-hidden animate-slideDown">
+        <div className="absolute z-40 left-0 right-0 top-full pt-2">
+          <div className="rounded-2xl border border-gray-200 dark:border-[#273244] bg-white dark:bg-[#0F1525] shadow-xl shadow-black/10 overflow-hidden animate-slideDown">
           <div className="p-2.5 border-b border-gray-100 dark:border-[#273244] space-y-2">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -124,9 +125,10 @@ export default function BranchSwitcher() {
           <div className="p-2.5 border-t border-gray-100 dark:border-[#273244] bg-gray-50/50 dark:bg-white/[0.02] flex items-center justify-between">
             <span className="text-[11px] text-gray-400">{activeBranches.length} active</span>
             <button onClick={() => setOpen(false)} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-[#0F9291]">Close</button>
+           </div>
           </div>
-        </div>
-      )}
-    </div>
+         </div>
+       )}
+     </div>
   );
 }
