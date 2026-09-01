@@ -644,3 +644,55 @@ export const StockMovementsAPI = {
   },
 };
 
+// ---- Backup (Superadmin, Google Drive) ----
+export const BackupAPI = {
+  // POST /api/backup/create?branchId=null -> all branches
+  createAll: async () => {
+    const res = await ApiClient.post<ApiResponse>('/backup/create', {});
+    return extractSingle(res, 'backup');
+  },
+  createForBranch: async (branchId: string) => {
+    const res = await ApiClient.post<ApiResponse>(`/backup/create?branchId=${encodeURIComponent(branchId)}`, {});
+    return extractSingle(res, 'backup');
+  },
+  // aliases for pages that use .create / .history / .latest / .status
+  create: async (branchId?: string | null) => {
+    const q = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+    const res = await ApiClient.post<ApiResponse>(`/backup/create${q}`, {});
+    return extractSingle(res, 'backup');
+  },
+  getHistory: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/history');
+    return { data: extractList(res, 'backups') };
+  },
+  history: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/history');
+    return { data: extractList(res, 'backups') };
+  },
+  getLatest: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/latest');
+    return extractSingle(res, 'backup');
+  },
+  latest: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/latest');
+    return extractSingle(res, 'backup');
+  },
+  getStatus: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/status');
+    // backend returns { message, cloudConfigured }
+    return { message: String(res.message || ''), cloudConfigured: Boolean((res as any).cloudConfigured) };
+  },
+  status: async () => {
+    const res = await ApiClient.get<ApiResponse>('/backup/status');
+    return { message: String(res.message || ''), cloudConfigured: Boolean((res as any).cloudConfigured) };
+  },
+  download: (id: string | number) => {
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+    const url = `${String(base).replace(/\/+$/, '').replace(/\/api$/, '')}/api/backup/download/${id}`;
+    // fallback to ApiClient base if needed
+    return url;
+  },
+};
+
+
+

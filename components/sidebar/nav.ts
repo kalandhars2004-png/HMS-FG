@@ -130,7 +130,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { name: 'Business', href: '/settings/business', icon: Building2 },
       { name: 'Billing', href: '/settings/taxes', icon: FileText },
       { name: 'System Integrations', href: '/settings/integrations', icon: Component },
-      { name: 'Backup', href: '/settings/backup', icon: Archive, badge: { label: 'Syncing', variant: 'sync' } },
+      { name: 'Backup', href: '/settings/backup', icon: Archive, roles: ['super_admin'] as Role[], badge: { label: 'Syncing', variant: 'sync' } },
     ],
   },
 ];
@@ -161,6 +161,10 @@ export function canSeeSection(section: NavSection, role?: string): boolean {
 export function canSeeItem(item: NavItem, role?: string): boolean {
   if (!item.roles) return true;
   const r = (role || '').toLowerCase() as Role;
+  // Backup is superadmin-only; do not let ADMIN bypass via the generic isSuper check.
+  if (item.roles.length === 1 && item.roles[0] === 'super_admin') {
+    return r === 'super_admin';
+  }
   if (isSuper(r)) return true;
   if (r === 'branch_manager' && item.roles.includes('manager')) return true;
   return item.roles.includes(r);
